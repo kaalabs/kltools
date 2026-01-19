@@ -13,8 +13,16 @@ and lets you filter, add, edit, and delete records.
 
 ```bash
 npm install
+
+# First run (creates the DB if missing and embeds the schema)
 npm start -- --schema ./examples/schema.json --db ./examples/data.toml
+
+# Next runs (schema loaded from DB metadata)
+npm start -- --db ./examples/data.toml
 ```
+
+Reqman stores the schema inside the TOML database under `[__reqman].schema_json`,
+so you can run it later with only the database file path.
 
 ### Schema format
 

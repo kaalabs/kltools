@@ -50,46 +50,90 @@ type LoadedDatabase = {
 type Mode = "list" | "new" | "edit";
 
 const FIELD_TYPES: FieldType[] = ["number", "text", "boolean", "date", "time", "choice"];
+const REQMAN_META_TABLE = "__reqman";
+const REQMAN_SCHEMA_VERSION = 1;
+const REQMAN_SCHEMA_VERSION_KEY = "schema_version";
+const REQMAN_SCHEMA_JSON_KEY = "schema_json";
 
 function parseArgs(argv: string[]) {
-  const args = [...argv];
-  if (args.includes("-h") || args.includes("--help")) {
-    printUsageAndExit(0);
+  let schemaPath: string | undefined;
+  let dbPath: string | undefined;
+  const positionals: string[] = [];
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "-h" || arg === "--help") {
+      printUsageAndExit(0);
+    }
+
+    if (arg === "--schema" || arg === "-s") {
+      const value = argv[i + 1];
+      if (!value) {
+        console.error(`Missing value for ${arg}.`);
+        printUsageAndExit(1);
+      }
+      schemaPath = value;
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--schema=")) {
+      schemaPath = arg.slice("--schema=".length);
+      continue;
+    }
+
+    if (arg === "--db" || arg === "-d") {
+      const value = argv[i + 1];
+      if (!value) {
+        console.error(`Missing value for ${arg}.`);
+        printUsageAndExit(1);
+      }
+      dbPath = value;
+      i += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--db=")) {
+      dbPath = arg.slice("--db=".length);
+      continue;
+    }
+
+    if (arg.startsWith("-")) {
+      console.error(`Unknown option: ${arg}`);
+      printUsageAndExit(1);
+    }
+
+    positionals.push(arg);
   }
 
-  const schemaPath =
-    getArgValue(args, "--schema") ??
-    getArgValue(args, "-s") ??
-    args[0];
-  const dbPath =
-    getArgValue(args, "--db") ??
-    getArgValue(args, "-d") ??
-    args[1];
+  if (!schemaPath && !dbPath) {
+    if (positionals.length === 1) {
+      dbPath = positionals[0];
+    } else if (positionals.length >= 2) {
+      schemaPath = positionals[0];
+      dbPath = positionals[1];
+    }
+  } else if (!dbPath) {
+    dbPath = positionals[0];
+  } else if (!schemaPath) {
+    schemaPath = positionals[0];
+  }
 
-  if (!schemaPath || !dbPath) {
+  if (!dbPath) {
     printUsageAndExit(1);
   }
 
   return {
-    schemaPath: path.resolve(schemaPath),
+    schemaPath: schemaPath ? path.resolve(schemaPath) : undefined,
     dbPath: path.resolve(dbPath),
   };
 }
 
-function getArgValue(args: string[], name: string) {
-  const index = args.findIndex((arg) => arg === name || arg.startsWith(`${name}=`));
-  if (index === -1) {
-    return undefined;
-  }
-  const arg = args[index];
-  if (arg.startsWith(`${name}=`)) {
-    return arg.slice(name.length + 1);
-  }
-  return args[index + 1];
-}
-
-function printUsageAndExit(code: number) {
+function printUsageAndExit(code: number): never {
   const usage = `Usage:
+  reqman --db ./data.toml
+  reqman ./data.toml
+
   reqman --schema ./schema.json --db ./data.toml
   reqman ./schema.json ./data.toml
 
@@ -97,6 +141,10 @@ Options:
   -s, --schema   Path to JSON schema
   -d, --db       Path to TOML database
   -h, --help     Show this help
+
+Notes:
+  - If the database contains an embedded schema, you can omit --schema.
+  - New databases created with --schema will embed it under [${REQMAN_META_TABLE}].${REQMAN_SCHEMA_JSON_KEY}.
 `;
   console.log(usage);
   process.exit(code);
@@ -121,6 +169,9 @@ function parseSchema(raw: unknown): DatabaseSchema {
   }
   const obj = raw as Record<string, unknown>;
   const name = typeof obj.name === "string" && obj.name.trim() ? obj.name.trim() : "records";
+  if (name === REQMAN_META_TABLE) {
+    throw new Error(`Schema name '${REQMAN_META_TABLE}' is reserved for Reqman metadata.`);
+  }
   const fieldsRaw = obj.fields;
   if (!Array.isArray(fieldsRaw)) {
     throw new Error("Schema.fields must be an array.");
@@ -198,12 +249,49 @@ function parseSchema(raw: unknown): DatabaseSchema {
   };
 }
 
-function ensureDatabaseFile(dbPath: string) {
-  if (fs.existsSync(dbPath)) {
+function ensureSchemaMetadata(data: Record<string, unknown>, schema: DatabaseSchema) {
+  const current = data[REQMAN_META_TABLE];
+  const next: Record<string, unknown> =
+    current && typeof current === "object" && !Array.isArray(current)
+      ? { ...(current as Record<string, unknown>) }
+      : {};
+  next[REQMAN_SCHEMA_VERSION_KEY] = REQMAN_SCHEMA_VERSION;
+  next[REQMAN_SCHEMA_JSON_KEY] = JSON.stringify(schema, null, 2);
+  data[REQMAN_META_TABLE] = next;
+}
+
+function ensureDatabaseFile(dbPath: string, schema: DatabaseSchema) {
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  const createFresh = () => {
+    const data: Record<string, unknown> = {};
+    ensureSchemaMetadata(data, schema);
+    data[schema.name] = [];
+    const output = stringifyToml(data as Record<string, any>);
+    fs.writeFileSync(dbPath, output, "utf8");
+  };
+
+  if (!fs.existsSync(dbPath)) {
+    createFresh();
     return;
   }
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  fs.writeFileSync(dbPath, "", "utf8");
+
+  const raw = fs.readFileSync(dbPath, "utf8");
+  if (!raw.trim()) {
+    createFresh();
+    return;
+  }
+
+  let data: Record<string, unknown>;
+  try {
+    data = parseToml(raw) as Record<string, unknown>;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse database TOML '${dbPath}': ${message}`);
+  }
+
+  ensureSchemaMetadata(data, schema);
+  const output = stringifyToml(data as Record<string, any>);
+  fs.writeFileSync(dbPath, output, "utf8");
 }
 
 function loadDatabase(dbPath: string, schema: DatabaseSchema): LoadedDatabase {
@@ -230,6 +318,7 @@ function normalizeRecord(value: unknown): Record<string, unknown> {
 
 function saveDatabase(dbPath: string, data: Record<string, unknown>, schema: DatabaseSchema, records: Record<string, unknown>[]) {
   data[schema.name] = records;
+  ensureSchemaMetadata(data, schema);
   const output = stringifyToml(data as Record<string, any>);
   fs.writeFileSync(dbPath, output, "utf8");
 }
@@ -445,7 +534,7 @@ function isTextEntry(renderable: Renderable | null): renderable is InputRenderab
 
 async function startApp(
   schema: DatabaseSchema,
-  schemaPath: string,
+  schemaDisplay: string,
   dbPath: string,
   loaded: LoadedDatabase,
   version: string,
@@ -473,7 +562,7 @@ async function startApp(
 
   const meta = new TextRenderable(renderer, {
     id: "meta",
-    content: `Schema: ${schemaPath}\nDB: ${dbPath}`,
+    content: `Schema: ${schemaDisplay}\nDB: ${dbPath}`,
     height: 2,
   });
 
@@ -965,14 +1054,82 @@ async function startApp(
   renderer.start();
 }
 
+function loadSchemaFromDatabase(dbPath: string): DatabaseSchema {
+  const raw = fs.readFileSync(dbPath, "utf8");
+  const content = raw.trim();
+  if (!content) {
+    throw new Error(
+      `Database '${dbPath}' is empty and does not include an embedded schema. Provide --schema to create it.`,
+    );
+  }
+
+  let data: Record<string, unknown>;
+  try {
+    data = parseToml(raw) as Record<string, unknown>;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse database TOML: ${message}`);
+  }
+
+  const metaValue = data[REQMAN_META_TABLE];
+  if (!metaValue || typeof metaValue !== "object" || Array.isArray(metaValue)) {
+    throw new Error(
+      `Database '${dbPath}' does not include an embedded schema. Provide --schema to create or update it.`,
+    );
+  }
+
+  const meta = metaValue as Record<string, unknown>;
+  const schemaVersion = meta[REQMAN_SCHEMA_VERSION_KEY];
+  if (schemaVersion !== undefined && typeof schemaVersion !== "number") {
+    throw new Error(
+      `Database '${dbPath}' has invalid embedded schema version metadata.`,
+    );
+  }
+  if (typeof schemaVersion === "number" && schemaVersion !== REQMAN_SCHEMA_VERSION) {
+    throw new Error(
+      `Database '${dbPath}' has unsupported embedded schema_version=${schemaVersion}.`,
+    );
+  }
+
+  const schemaJson = meta[REQMAN_SCHEMA_JSON_KEY];
+  if (typeof schemaJson !== "string" || !schemaJson.trim()) {
+    throw new Error(
+      `Database '${dbPath}' does not include an embedded schema. Provide --schema to create or update it.`,
+    );
+  }
+
+  let schemaRaw: unknown;
+  try {
+    schemaRaw = JSON.parse(schemaJson.trim());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Embedded schema in '${dbPath}' is not valid JSON: ${message}`);
+  }
+
+  return parseSchema(schemaRaw);
+}
+
 async function main() {
-  const { schemaPath, dbPath } = parseArgs(process.argv.slice(2));
-  const schemaRaw = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
-  const schema = parseSchema(schemaRaw);
   const version = getAppVersion();
-  ensureDatabaseFile(dbPath);
+  const { schemaPath, dbPath } = parseArgs(process.argv.slice(2));
+
+  let schema: DatabaseSchema;
+  let schemaDisplay: string;
+  if (schemaPath) {
+    const schemaRaw = JSON.parse(fs.readFileSync(schemaPath, "utf8"));
+    schema = parseSchema(schemaRaw);
+    schemaDisplay = schemaPath;
+    ensureDatabaseFile(dbPath, schema);
+  } else {
+    if (!fs.existsSync(dbPath)) {
+      throw new Error(`Database file not found: ${dbPath}\nProvide --schema to create it.`);
+    }
+    schema = loadSchemaFromDatabase(dbPath);
+    schemaDisplay = "embedded in database";
+  }
+
   const loaded = loadDatabase(dbPath, schema);
-  await startApp(schema, schemaPath, dbPath, loaded, version);
+  await startApp(schema, schemaDisplay, dbPath, loaded, version);
 }
 
 main().catch((error) => {
