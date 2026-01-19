@@ -8,7 +8,7 @@ Read-only TUI dashboard that watches a `TASKS.toml` file and shows real-time pro
 cargo run
 ```
 
-Default file: `../2026-01-11-haakpatronenbuddy/TASKS.toml`
+Default file: `./TASKS.toml`
 
 Or pass a path:
 
