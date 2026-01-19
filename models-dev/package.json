@@ -1,0 +1,39 @@
+{
+  "name": "modelsdev-cli",
+  "version": "0.9.1",
+  "description": "CLI to query https://models.dev/api.json for providers and model metadata",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "modelsdev": "bin/run.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test",
+    "lint": "node -c bin/run.js"
+  },
+  "dependencies": {
+    "@oclif/core": "^4.8.0",
+    "@oclif/plugin-help": "^6.2.36",
+    "@oclif/plugin-not-found": "^3.2.73"
+  },
+  "oclif": {
+    "bin": "modelsdev",
+    "commands": "./src/commands",
+    "topicSeparator": " ",
+    "plugins": [
+      "@oclif/plugin-help",
+      "@oclif/plugin-not-found"
+    ],
+    "topics": {
+      "providers": {
+        "description": "Browse LLM providers in models.dev"
+      },
+      "models": {
+        "description": "Browse LLM models in models.dev"
+      }
+    }
+  }
+}
