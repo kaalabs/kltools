@@ -18,7 +18,7 @@ npm install
 npm start -- --schema ./examples/schema.json --db ./examples/data.toml
 
 # Next runs (schema loaded from DB metadata)
-npm start -- --db ./examples/data.toml
+npm start -- ./examples/data.toml
 ```
 
 Reqman stores the schema inside the TOML database under `[__reqman].schema_json`,

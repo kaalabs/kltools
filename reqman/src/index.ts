@@ -61,6 +61,7 @@ function parseArgs(argv: string[]) {
   let schemaPath: string | undefined;
   let dbPath: string | undefined;
   const positionals: string[] = [];
+  let sawOptionFlag = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -69,6 +70,7 @@ function parseArgs(argv: string[]) {
     }
 
     if (arg === "--schema" || arg === "-s") {
+      sawOptionFlag = true;
       const value = argv[i + 1];
       if (!value) {
         console.error(`Missing value for ${arg}.`);
@@ -80,11 +82,13 @@ function parseArgs(argv: string[]) {
     }
 
     if (arg.startsWith("--schema=")) {
+      sawOptionFlag = true;
       schemaPath = arg.slice("--schema=".length);
       continue;
     }
 
     if (arg === "--db" || arg === "-d") {
+      sawOptionFlag = true;
       const value = argv[i + 1];
       if (!value) {
         console.error(`Missing value for ${arg}.`);
@@ -96,6 +100,7 @@ function parseArgs(argv: string[]) {
     }
 
     if (arg.startsWith("--db=")) {
+      sawOptionFlag = true;
       dbPath = arg.slice("--db=".length);
       continue;
     }
@@ -108,12 +113,14 @@ function parseArgs(argv: string[]) {
     positionals.push(arg);
   }
 
-  if (!schemaPath && !dbPath) {
+  if (!sawOptionFlag) {
     if (positionals.length === 1) {
       dbPath = positionals[0];
-    } else if (positionals.length >= 2) {
-      schemaPath = positionals[0];
-      dbPath = positionals[1];
+    } else {
+      if (positionals.length > 0) {
+        console.error("When no options are supplied, provide only the database file path.");
+      }
+      printUsageAndExit(1);
     }
   } else if (!dbPath) {
     dbPath = positionals[0];
@@ -133,11 +140,10 @@ function parseArgs(argv: string[]) {
 
 function printUsageAndExit(code: number): never {
   const usage = `Usage:
-  reqman --db ./data.toml
   reqman ./data.toml
+  reqman --db ./data.toml
 
   reqman --schema ./schema.json --db ./data.toml
-  reqman ./schema.json ./data.toml
 
 Options:
   -s, --schema   Path to JSON schema
