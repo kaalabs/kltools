@@ -4,6 +4,13 @@
   "description": "CLI to query https://models.dev/api.json for providers and model metadata",
   "license": "MIT",
   "type": "module",
+  "files": [
+    "bin",
+    "src",
+    "config.toml",
+    "README.md",
+    "AGENTS.md"
+  ],
   "bin": {
     "modelsdev": "bin/run.js"
   },

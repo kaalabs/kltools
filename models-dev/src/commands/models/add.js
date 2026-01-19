@@ -227,12 +227,13 @@ function inferModelType({providerId, model, modelId, provider, providerSectionTe
 export default class ModelsAdd extends BaseCommand {
   static summary = "Add a model to config.toml";
 
-  static args = {
-    ref: Args.string({
+  static args = [
+    Args.string({
+      name: "ref",
       required: true,
       description: "providerId/modelId or modelId",
     }),
-  };
+  ];
 
   static flags = {
     ...BaseCommand.baseFlags,

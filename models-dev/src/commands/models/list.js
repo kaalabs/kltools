@@ -16,6 +16,7 @@ import {formatCost, formatInteger, modelFeaturesShort, modalitiesShort, renderTa
 
 export default class ModelsList extends BaseCommand {
   static summary = "List models from models.dev";
+  static args = [];
 
   static flags = {
     ...BaseCommand.baseFlags,
