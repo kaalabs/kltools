@@ -4,6 +4,7 @@ Mono-repo for kaaLabs tooling. Each tool is self-contained; see the tool's own `
 
 ## Index
 
+- `harnas-monitor` — read-only TUI dashboard that watches a `TASKS.toml` file and shows real-time progress + task details. Docs: [harnas-monitor/README.md](harnas-monitor/README.md)
 - `models-dev` — `modelsdev` CLI for querying the public models.dev API (providers + models). Docs: [models-dev/README.md](models-dev/README.md)
 - `reqman` — `reqman` terminal UI (TUI) for managing TOML-backed databases from a JSON schema (OpenTUI). Docs: [reqman/README.md](reqman/README.md)
 
