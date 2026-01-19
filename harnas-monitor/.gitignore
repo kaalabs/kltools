@@ -1,0 +1,14 @@
+# Rust / Cargo
+/target/
+
+# Rustfmt / editor backups
+**/*.rs.bk
+
+# OS cruft
+.DS_Store
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo

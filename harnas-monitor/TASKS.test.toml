@@ -1,0 +1,1241 @@
+[meta]
+spec_file = "SPEC.md"
+spec_version = "v1.1"
+output_file = "TASKS.toml"
+generated_utc = "2026-01-12T02:29:59Z"
+assumptions = [
+  "Default granularityMode is repeat-as-step.",
+  "Missing CountAssertion is a warning by default (configurable later).",
+  "Backup encryption is not mandatory for MVP unless explicitly prioritized."
+]
+
+[[tasks]]
+id = "T-0001"
+title = "Project skeleton + Go toolchain constraints"
+component = "release"
+priority = "must"
+status = "done"
+spec_refs = ["NFR-012", "NFR-013", "NFR-016"]
+depends_on = []
+summary = "Repo is klaar voor reproduceerbare CGO-vrije builds met een single-binary entrypoint en versie-output."
+deliverables = [
+  "go.mod/go.sum (pinned deps)",
+  "cmd/haakbuddy (main entry)",
+  "internal/buildinfo (version/build info wiring)",
+  "Makefile of scripts/run targets (local only)"
+]
+estimate_days = 1.5
+dod = [
+  "Build werkt met `CGO_ENABLED=0 go build ./...` op de lokale machine.",
+  "Binary ondersteunt `--version` (of `version`) en toont semver + commit/build datum (indien beschikbaar).",
+  "Geen dependency vereist CGO; `go env CGO_ENABLED` kan 0 zijn tijdens build.",
+  "Go versie constraint is expliciet (Go 1.25.x) in tooling/docs of build checks.",
+  "Start van de app via `go run ./cmd/haakbuddy` toont een TUI frame (mag nog minimal zijn)."
+]
+notes = "Geen extra release/branching automatisering toevoegen; focus op minimal workflow."
+
+[[tasks]]
+id = "T-0002"
+title = "Bubble Tea app shell + router + keymap basis"
+component = "tui"
+priority = "must"
+status = "done"
+spec_refs = ["NFR-012", "NFR-014", "NFR-007"]
+depends_on = ["T-0001"]
+summary = "Full-screen TUI basis met scherm-routering, focus management, en keyboard-first keybindings."
+deliverables = [
+  "internal/tui/app (root model/update/view)",
+  "internal/tui/nav (screen stack/router)",
+  "internal/tui/keymap (documenteerbare keybindings)",
+  "internal/tui/style (Lip Gloss basis layout)"
+]
+estimate_days = 2.0
+dod = [
+  "App draait full-screen via Bubble Tea event-loop (Model/Update/View).",
+  "Alle interactie is keyboard-only (geen muis vereist) met zichtbare focus-indicatie.",
+  "Terminal resize events worden verwerkt zonder layout corruptie (handmatige resize test).",
+  "Keybindings zijn gecentraliseerd (één plek) zodat documentatie later consistent kan worden."
+]
+notes = "Gebruik Bubble Tea + (waar nuttig) Bubbles + Lip Gloss; geen GUI of browser UI."
+
+[[tasks]]
+id = "T-0003"
+title = "Structured logging naar lokaal bestand (zonder snippets)"
+component = "release"
+priority = "must"
+status = "done"
+spec_refs = ["NFR-017", "NFR-010"]
+depends_on = ["T-0001"]
+summary = "Gestructureerde logs naar lokaal bestand met guardrails tegen bronfragmenten/snippets."
+deliverables = [
+  "internal/observability/logging (logger init + file sink)",
+  "internal/config (log path/level config)"
+]
+estimate_days = 1.0
+dod = [
+  "App kan logs schrijven naar een lokaal bestand met bounded/rotating gedrag of maximale grootte.",
+  "Logs bevatten geen snippets/boektekst; logvelden zijn expliciet gescrubd/gelimiteerd.",
+  "Een geforceerde error in validator/engine verschijnt in logs met context (patternId/instanceId) maar zonder bronfragmenten."
+]
+notes = "Offline-first: geen netwerk logging; privacy/copyright eerst."
+
+[[tasks]]
+id = "T-0004"
+title = "IR/AST domeinmodel (PatternDoc, nodes, rights, legend, assertions)"
+component = "core"
+priority = "must"
+status = "done"
+spec_refs = ["FR-006", "FR-007", "FR-008", "FR-009", "FR-011", "FR-013", "FR-014", "NFR-008"]
+depends_on = ["T-0001"]
+summary = "Canonieke interne representatie (JSON + AST) als types met duidelijke invarianten voor MVP."
+deliverables = [
+  "internal/core/ir (PatternDoc + schema types)",
+  "internal/core/ir/ast (AstNode variants: op/repeat/label/note/condition/measurement)",
+  "internal/core/ir/rights (guided_only vs user_excerpt)",
+  "internal/core/ir/legend (token mappings + dialectProfile)",
+  "internal/core/ir/assertions (CountAssertion)"
+]
+estimate_days = 2.5
+dod = [
+  "Alle kern-entiteiten uit SPEC §6.1 bestaan als Go types (PatternDoc/Pattern/Part/PartInstance/RowOrRound/AstNode/AnchorRef/CountAssertion).",
+  "DialectProfile ondersteunt exact `nl`, `en_us`, `en_uk`.",
+  "Rights boundary is first-class: `guided_only` default en `user_excerpt` optioneel.",
+  "IR dekt ook non-MVP nodes (ConditionNode/MeasurementGateNode) als model (UI later beperkt)."
+]
+notes = "Geen features buiten MVP implementeren; wel model uitbreidbaar houden voor fixtures."
+
+[[tasks]]
+id = "T-0005"
+title = "IR JSON IO + schemaVersion parsing/validation"
+component = "core"
+priority = "must"
+status = "done"
+spec_refs = ["NFR-005", "FR-035", "FR-037"]
+depends_on = ["T-0004"]
+summary = "Betrouwbare JSON serialize/deserialize met schemaVersion semver en basisvalidatie."
+deliverables = [
+  "internal/core/ircodec (marshal/unmarshal)",
+  "internal/core/schema (schemaVersion handling + semver)",
+  "internal/core/irvalidate/basic (required fields + enum checks)"
+]
+estimate_days = 1.5
+dod = [
+  "`go test ./...` bevat tests die PatternDoc JSON roundtrip valideren.",
+  "Onbekende enums (dialectProfile/rights.mode/nodeType/op/anchor.kind) geven duidelijke errors.",
+  "schemaVersion wordt gevalideerd als semver-string en is verplicht aanwezig bij import/export.",
+  "IR kan geladen worden uit `testdata/*.json` fixtures zonder losse afhankelijkheden."
+]
+
+[[tasks]]
+id = "T-0006"
+title = "Schema migrations framework (pure transforms) voor import/open"
+component = "core"
+priority = "must"
+status = "done"
+spec_refs = ["FR-037", "FR-035"]
+depends_on = ["T-0005"]
+summary = "Migratie-laag voor schemaVersion bumps als pure, testbare JSON transforms."
+deliverables = [
+  "internal/core/migrate (registry + apply)",
+  "internal/core/migrate/tests (idempotency + bump scenario)"
+]
+estimate_days = 1.5
+dod = [
+  "Migraties zijn pure transforms (input JSON -> output JSON) zonder side effects.",
+  "Er is een test voor een schemaVersion bump scenario (oude -> nieuwe versie) inclusief roundtrip import.",
+  "Migratie is idempotent of gedraagt zich veilig bij herhaald toepassen (testbaar).",
+  "Bij onbekende schemaVersion faalt import met een duidelijke, user-friendly error."
+]
+notes = "Geen automatische network fetch of tooling; alles lokaal/offline."
+
+[[tasks]]
+id = "T-0007"
+title = "Validator: repeats, assertions policy, anchors, unknown tokens"
+component = "core"
+priority = "must"
+status = "done"
+spec_refs = ["FR-017", "FR-018", "FR-019", "FR-020", "FR-021"]
+depends_on = ["T-0005"]
+summary = "Valideer IR op uitvoerbaarheid en geef blocking errors vs warnings volgens policy."
+deliverables = [
+  "internal/core/validate (validator entrypoint)",
+  "internal/core/validate/rules (repeat nesting/times, anchors, assertions policy)",
+  "internal/core/validate/report (errors/warnings + locations)"
+]
+estimate_days = 2.5
+dod = [
+  "Validator detecteert invalid repeat nesting en `times <= 0` als blocking error.",
+  "Validator detecteert onbekende anchor.kind of onmogelijke anchor shapes als blocking error.",
+  "Validator detecteert missing CountAssertion als warning (default policy) en kan policy-level configureren voor escalatie naar error.",
+  "Validator produceert een 'unknown tokens' lijst met usage locations (round/row context).",
+  "Er is een CLI/dev command of test helper om validator output te printen voor een fixture."
+]
+notes = "Validator is de gate voor Guided Mode start (met expliciete override per SPEC)."
+
+[[tasks]]
+id = "T-0008"
+title = "SQLite setup (CGO-vrije driver) + WAL + schema migrations"
+component = "storage"
+priority = "must"
+status = "done"
+spec_refs = ["NFR-015", "NFR-013", "NFR-004"]
+depends_on = ["T-0001"]
+summary = "SQLite storage laag met WAL-mode, transactionele writes en init/migrate van DB schema."
+deliverables = [
+  "internal/storage/sqlite (open/init pragmas)",
+  "internal/storage/migrations (DB schema versioning)",
+  "internal/storage/db (connection lifecycle)"
+]
+estimate_days = 2.0
+dod = [
+  "SQLite driver is CGO-vrij (bijv. modernc.org/sqlite) en werkt met `CGO_ENABLED=0` builds.",
+  "DB wordt geconfigureerd in WAL-mode (PRAGMA) en start consistent op.",
+  "DB schema migrations draaien automatisch bij start (offline, lokaal).",
+  "Er is een integratietest die DB init + migrate uitvoert in een tijdelijke directory."
+]
+notes = "Focus op crash-safety: transactioneel en atomair voor event appends."
+
+[[tasks]]
+id = "T-0009"
+title = "Patterns repository: library queries + metadata + IR blob"
+component = "storage"
+priority = "must"
+status = "done"
+spec_refs = ["FR-001", "FR-002", "FR-003", "NFR-001"]
+depends_on = ["T-0008", "T-0005"]
+summary = "Opslaan en ophalen van patronen incl. metadata, rights fields, schemaVersion en lastActivity sortering."
+deliverables = [
+  "internal/storage/repo/patterns (CRUD + list/sort)",
+  "internal/storage/schema (patterns table + indexes)"
+]
+estimate_days = 2.0
+dod = [
+  "Library list query sorteert default op lastActivity desc en toont empty state wanneer leeg (UI later).",
+  "Pattern metadata (titel/author/notes/sourceRef) kan worden opgeslagen en blijft na restart.",
+  "IR JSON wordt opgeslagen als blob met schemaVersion en updatedAt velden.",
+  "Er zijn indexes voor snelle library sort (lastActivityAt/updatedAt).",
+  "`go test ./...` bevat repo tests voor create/update/list."
+]
+
+[[tasks]]
+id = "T-0010"
+title = "PartInstances repository: multiple instances per part"
+component = "storage"
+priority = "must"
+status = "done"
+spec_refs = ["FR-004", "FR-022"]
+depends_on = ["T-0008", "T-0009"]
+summary = "Beheer van PartInstances (aanmaken/hernoemen/status) met eigen progress scope."
+deliverables = [
+  "internal/storage/repo/instances (CRUD + list by pattern/part)",
+  "internal/storage/schema (part_instances table + indexes)"
+]
+estimate_days = 1.5
+dod = [
+  "User kan meerdere instances per part opslaan (instanceId uniek) met status not_started/in_progress/completed.",
+  "Rename en status updates zijn persistent.",
+  "Repo APIs ondersteunen selectie van instance als scope voor event-log.",
+  "`go test ./...` bevat tests voor aanmaken/hernoemen/status updates."
+]
+
+[[tasks]]
+id = "T-0011"
+title = "Event-log repository: transactional append + replay read"
+component = "storage"
+priority = "must"
+status = "done"
+spec_refs = ["FR-023", "FR-027", "FR-030", "FR-031", "FR-032", "NFR-004", "NFR-005", "FR-002"]
+depends_on = ["T-0008", "T-0010"]
+summary = "Append-only event store per instance met atomische transactionele appends en efficiënte replay."
+deliverables = [
+  "internal/storage/repo/events (append/list by instance)",
+  "internal/storage/schema (events table + indexes)",
+  "internal/storage/derived (lastActivity update hook)"
+]
+estimate_days = 2.5
+dod = [
+  "Event append is atomair in één transaction (geen partial writes).",
+  "Events hebben een stabiele volgorde/index per instance en kunnen volledig gereplayed worden.",
+  "StepConfirmed updates pattern.lastActivityAt zodat library sort klopt.",
+  "Repo kan events teruggeven als typed events of raw JSON payloads met schema.",
+  "`go test ./...` bevat tests voor append/replay ordering en lastActivity updates."
+]
+notes = "Undo/jump werkt via replay; geen in-place cursor state in storage."
+
+[[tasks]]
+id = "T-0012"
+title = "Snippets opslag scheiden + rights guardrails"
+component = "storage"
+priority = "must"
+status = "done"
+spec_refs = ["FR-006", "FR-026", "FR-036", "NFR-010"]
+depends_on = ["T-0009", "T-0007"]
+summary = "Snippets zijn optioneel (user_excerpt) en strikt gescheiden; default nooit export/log."
+deliverables = [
+  "internal/storage/repo/snippets (CRUD behind rights check)",
+  "internal/core/rights (enforcement helpers)"
+]
+estimate_days = 1.0
+dod = [
+  "In `guided_only` mode worden snippets niet opgeslagen en niet getoond.",
+  "In `user_excerpt` mode kunnen snippets lokaal opgeslagen worden, maar zijn ze standaard excluded in export (backend later).",
+  "Logs bevatten geen snippet content (tests/guards aanwezig).",
+  "Er is minimaal één test die bevestigt dat snippets storage niet bereikbaar is in guided_only."
+]
+notes = "Strict boundary: IR/progress zijn exportable, snippets niet default."
+
+[[tasks]]
+id = "T-0013"
+title = "Next Step Engine core: cursor traversal + stable stepId"
+component = "engine"
+priority = "must"
+status = "done"
+spec_refs = ["NFR-003", "NFR-005", "FR-023"]
+depends_on = ["T-0005", "T-0007"]
+summary = "Interpreter/state machine die nextAtomicStep kan leveren met deterministische stepIds en context."
+deliverables = [
+  "internal/engine (public API)",
+  "internal/engine/cursor (cursor + nodePath/repeatStack)",
+  "internal/engine/stepid (deterministic ID generation)"
+]
+estimate_days = 3.0
+dod = [
+  "Engine API accepteert PatternDoc + instanceId + eventLog + granularityMode en retourneert nextAtomicStep.",
+  "stepId is deterministisch en stabiel op basis van rowId/AST-path/repeat indices (niet afhankelijk van runtime pointers).",
+  "Derived state is pure functie van IR + events (replayable).",
+  "Er is een testfixture waarin dezelfde input exact dezelfde stepId/tekst oplevert over meerdere runs."
+]
+notes = "Geen parsing van boektekst; alleen IR als source-of-truth."
+
+[[tasks]]
+id = "T-0014"
+title = "Granularity modes: micro, repeat-as-step, row-as-step"
+component = "engine"
+priority = "must"
+status = "done"
+spec_refs = ["FR-023", "NFR-006", "NFR-003"]
+depends_on = ["T-0013"]
+summary = "Step boundary logic voor de drie granularity modes inclusief context i/n voor repeats."
+deliverables = [
+  "internal/engine/granularity (mode policies)",
+  "internal/engine/render (primaryText/details generation)"
+]
+estimate_days = 2.0
+dod = [
+  "Repeat-as-step (default) levert één step per repeat-iteratie met i/n context.",
+  "Row-as-step levert één step per row/round en forceert count-check aan het eind indien assertion bestaat.",
+  "Micro mode levert steps per OpNode (en kan outputs.count expanden volgens MVP keuze).",
+  "Switching granularity verandert alleen step boundaries; state blijft consistent (testbaar)."
+]
+
+[[tasks]]
+id = "T-0015"
+title = "CountAssertion checkpoints + mismatch handling + quick actions"
+component = "engine"
+priority = "must"
+status = "done"
+spec_refs = ["FR-014", "FR-027", "FR-032", "FR-033", "NFR-003"]
+depends_on = ["T-0014"]
+summary = "Checkpoint prompts bij CountAssertions met blocking behavior en herstelopties."
+deliverables = [
+  "internal/engine/checkpoints (expectedCountPrompt)",
+  "internal/engine/mismatch (recovery suggestions + state rules)"
+]
+estimate_days = 2.5
+dod = [
+  "Bij CountAssertion wordt een expectedCountPrompt aangeboden volgens severity/onMismatch.",
+  "Bij mismatch blijft cursor bij checkpoint totdat user actie kiest (block_and_prompt).",
+  "Quick actions zijn beschikbaar: ok, +1, -1, exact invoer (engine-level outcomes).",
+  "CountAdjusted events beïnvloeden de UX-context (effective count) zonder IR te muteren.",
+  "`go test ./...` bevat scenario tests: ok, mismatch+adjust, mismatch+continue warning."
+]
+notes = "Engine levert opties; TUI bepaalt presentatie."
+
+[[tasks]]
+id = "T-0016"
+title = "Undo + JumpTo: replay determinisme en target validatie"
+component = "engine"
+priority = "must"
+status = "done"
+spec_refs = ["FR-030", "FR-031", "NFR-005"]
+depends_on = ["T-0013"]
+summary = "Undo en jump werken uitsluitend via events en deterministische replay."
+deliverables = [
+  "internal/engine/replay (apply events to derived state)",
+  "internal/engine/jump (target resolution/validation)"
+]
+estimate_days = 2.0
+dod = [
+  "Undo recompute derived state door events[0..toEventIndex] toe te passen en levert correct nextAtomicStep.",
+  "JumpTo valideert dat rowIndex/labelId bestaat en zet cursor consistent (repeatStack afgeleid).",
+  "Bij JumpTo kan engine een warning flag geven dat counts mogelijk niet kloppen (voor UI).",
+  "`go test ./...` bevat tests voor undo/jump determinisme (zelfde events -> zelfde cursor/step)."
+]
+
+[[tasks]]
+id = "T-0017"
+title = "Markers + laatste stappen afleiding"
+component = "engine"
+priority = "must"
+status = "done"
+spec_refs = ["FR-028", "FR-029", "FR-031"]
+depends_on = ["T-0016"]
+summary = "Markers (labels) en afgeleide 'laatste 3 stappen' lijst uit event-log."
+deliverables = [
+  "internal/engine/history (last steps extraction)",
+  "internal/engine/markers (label registry from events)"
+]
+estimate_days = 1.5
+dod = [
+  "MarkerPlaced events maken labelId beschikbaar als JumpTo target.",
+  "Engine kan de laatste 3 bevestigde stappen (labels/primaryText) teruggeven als derived view.",
+  "Er zijn tests die bevestigen dat last steps correct veranderen na undo/jump."
+]
+
+[[tasks]]
+id = "T-0018"
+title = "Guided start gating: unknown tokens + validator integration"
+component = "engine"
+priority = "must"
+status = "done"
+spec_refs = ["FR-010", "FR-021", "FR-017"]
+depends_on = ["T-0013", "T-0007"]
+summary = "Start van Guided Mode blokkeert bij unknown tokens tenzij user expliciet override kiest."
+deliverables = [
+  "internal/engine/gate (start checks + override flag handling)"
+]
+estimate_days = 1.0
+dod = [
+  "Als validator unknown tokens meldt, levert engine (of service layer) een blocking state met resolve actions.",
+  "Een expliciete override (continue with warning) is mogelijk en wordt als event of setting vastgelegd.",
+  "Er is een test die bevestigt dat start zonder override blokkeert en mét override doorgaat."
+]
+notes = "UI moet gebruiker naar legend mapping kunnen sturen."
+
+[[tasks]]
+id = "T-0019"
+title = "TUI app boot: DB open, initial load, global nav, resize handling"
+component = "tui"
+priority = "must"
+status = "done"
+spec_refs = ["NFR-014", "NFR-007", "FR-001"]
+depends_on = ["T-0002", "T-0003", "T-0009"]
+summary = "App start met DB verbinding, laadt library data, en heeft globale navigatie."
+deliverables = [
+  "internal/tui/bootstrap (DB open + repos wiring)",
+  "internal/tui/state (app state + selection)",
+  "internal/tui/errors (fatal vs recoverable UI)"
+]
+estimate_days = 2.0
+dod = [
+  "Start van app opent DB en toont Library scherm (ook bij lege DB).",
+  "Terminal resize herlayout alle zichtbare componenten correct (handmatig testen).",
+  "Keyboard-first globale shortcuts werken (bv. quit/back/help).",
+  "Bij DB corruptie wordt een duidelijke melding getoond met suggestie richting import/herstel (zonder crash)."
+]
+
+[[tasks]]
+id = "T-0020"
+title = "Library scherm: lijst, empty state, sortering op lastActivity"
+component = "tui"
+priority = "must"
+status = "done"
+spec_refs = ["FR-001", "FR-002"]
+depends_on = ["T-0019"]
+summary = "Library UI toont patronen met metadata en default sortering lastActivity desc."
+deliverables = [
+  "internal/tui/screens/library (list + empty state)",
+  "internal/tui/components/patternlist (Bubbles list wrapper)"
+]
+estimate_days = 1.5
+dod = [
+  "Bij 0 patronen toont UI een empty state met 'Nieuw patroon' actie.",
+  "Bij >0 patronen toont UI titel + lastActivity per patroon en sorteert default correct.",
+  "Selectie/open pattern werkt via keyboard en nav stack.",
+  "Handmatige smoke: maak pattern aan (later) en zie lastActivity updaten na guided confirm (na T-0025)."
+]
+
+[[tasks]]
+id = "T-0021"
+title = "Pattern Setup scherm: rights, sourceRef, dialectProfile, legend mapping"
+component = "tui"
+priority = "must"
+status = "done"
+spec_refs = ["FR-006", "FR-007", "FR-008", "FR-009", "FR-010", "NFR-008", "NFR-010"]
+depends_on = ["T-0019", "T-0009", "T-0007"]
+summary = "Setup UI om copyright mode, bronverwijzing, dialect en legend token mappings te beheren."
+deliverables = [
+  "internal/tui/screens/setup (forms + legend list editor)",
+  "internal/tui/components/legend (token mapping editor)"
+]
+estimate_days = 2.5
+dod = [
+  "Nieuw patroon default rights.mode = guided_only en dialectProfile = nl.",
+  "User kan sourceType/sourceRef opslaan en later wijzigen (persistent).",
+  "User kan token mappings toevoegen/wijzigen; unknown tokens worden zichtbaar met usage hints.",
+  "Guided start gate wordt in UI zichtbaar (blocking state) bij unresolved unknown tokens.",
+  "Wijzigingen worden opgeslagen en blijven na app restart."
+]
+notes = "Geen opslag/export van boektekst in guided_only."
+
+[[tasks]]
+id = "T-0022"
+title = "Editor scherm: rounds beheren, stitch picker, repeat builder, assertions, live validatie"
+component = "tui"
+priority = "must"
+status = "done"
+spec_refs = ["FR-011", "FR-012", "FR-013", "FR-014", "FR-017", "FR-018", "FR-019", "FR-020"]
+depends_on = ["T-0021", "T-0007", "T-0005"]
+summary = "Structured entry editor voor ronden/toeren met repeat modelling en validatie feedback."
+deliverables = [
+  "internal/tui/screens/editor (round list + editor pane)",
+  "internal/tui/components/stitchpicker (MVP stitch set)",
+  "internal/tui/components/repeatbuilder (nested repeats)",
+  "internal/tui/components/assertions (CountAssertion editor)",
+  "internal/tui/components/validationpanel (errors/warnings)"
+]
+estimate_days = 3.0
+dod = [
+  "User kan rounds toevoegen, herordenen en bewerken; wijzigingen updaten IR persistent.",
+  "Stitch picker ondersteunt minimaal: ch, sl st, sc, mr, increase, decrease (+ techniek veld voor invdec optioneel).",
+  "Repeat builder kan `(1 sc, 1 inc) x6` modelleren met nesting en valide times.",
+  "User kan CountAssertions toevoegen met severity en expected (exact/range).",
+  "Live validatie toont blocking errors vs warnings volgens policy; blocking errors blokkeren guided start."
+]
+notes = "MVP ondersteunt spiral rounds; joined/row modellen bestaan maar UI mag beperkt zijn."
+
+[[tasks]]
+id = "T-0023"
+title = "PartInstances UI: aanmaken/hernoemen/status + selectie voor guided"
+component = "tui"
+priority = "must"
+status = "done"
+spec_refs = ["FR-004", "FR-022"]
+depends_on = ["T-0020", "T-0010"]
+summary = "UI om meerdere instances per part te beheren en een instance te kiezen om guided te starten."
+deliverables = [
+  "internal/tui/screens/instances (instance list + actions)"
+]
+estimate_days = 1.5
+dod = [
+  "User kan instance aanmaken en hernoemen via keyboard-only flow.",
+  "User kan instance status wijzigen (not_started/in_progress/completed).",
+  "Guided start actie is gekoppeld aan een geselecteerde instanceId.",
+  "Wijzigingen zijn persistent na restart."
+]
+
+[[tasks]]
+id = "T-0024"
+title = "Guided Mode scherm: next-step card, contextbalk, detail toggle, bronverwijzing"
+component = "tui"
+priority = "must"
+status = "done"
+spec_refs = ["FR-022", "FR-023", "FR-024", "FR-025", "FR-026", "NFR-007"]
+depends_on = ["T-0023", "T-0011", "T-0014", "T-0018"]
+summary = "Guided Mode basis UX met één volgende instructie, context, detail toggle en rights-safe bronweergave."
+deliverables = [
+  "internal/tui/screens/guided (next-step view + context bar)",
+  "internal/tui/components/stepcard (primaryText/details)",
+  "internal/tui/components/contextbar (round/repeat/granularity)"
+]
+estimate_days = 2.5
+dod = [
+  "Guided mode start per instanceId en toont precies één next-step card met confirm actie.",
+  "Contextbalk toont: part/instance, round index, repeat i/n (indien relevant), en granularity mode.",
+  "Detail toggle wisselt expanded details zonder state impact.",
+  "Guided-only toont alleen bronverwijzing (sourceRef/sourceRefHint) zonder snippets; user_excerpt kan lokaal snippet tonen indien aanwezig.",
+  "Terminal resize herlayout guided scherm correct (handmatig testen)."
+]
+
+[[tasks]]
+id = "T-0025"
+title = "Guided Mode recovery: checkpoints, undo, jump, markers, 'draad kwijt' flow"
+component = "tui"
+priority = "must"
+status = "done"
+spec_refs = ["FR-027", "FR-028", "FR-029", "FR-030", "FR-031", "FR-032", "FR-033"]
+depends_on = ["T-0024", "T-0015", "T-0016", "T-0017"]
+summary = "Volledige progress/recovery flows in Guided Mode inclusief mismatch handling en resync."
+deliverables = [
+  "internal/tui/screens/guided (checkpoint/mismatch panels)",
+  "internal/tui/components/laststeps (laatste 3 stappen)",
+  "internal/tui/components/jump (jump dialog)",
+  "internal/tui/components/markers (place/select markers)",
+  "internal/tui/flows/lostthread (draad kwijt wizard)"
+]
+estimate_days = 3.0
+dod = [
+  "Checkpoint prompt verschijnt bij CountAssertions en logt CountChecked met actual count.",
+  "Mismatch flow biedt quick actions (ok/+1/-1/exact) en kan CountAdjusted loggen met reason.",
+  "Undo werkt met meerdere stappen en derived state blijft coherent na undo (visueel en via engine output).",
+  "Jump naar round index of marker label werkt en valideert targets; UI toont warning bij mogelijke count inconsistency.",
+  "'Ik ben de draad kwijt' flow biedt: terug naar laatste checkpoint, kies round, kies marker, pas count aan, of markeer fout (ErrorFlagged).",
+  "Laatste 3 stappen zijn zichtbaar en komen uit event-log/derived state.",
+  "Handmatige smoke journey A: editor -> guided -> 10+ rounds confirm + mismatch herstel zonder crash."
+]
+notes = "Geen boektekst in flows; reasons zijn user input, niet excerpt."
+
+[[tasks]]
+id = "T-0026"
+title = "Export backend: zip bundle met manifest + checksums + events JSONL"
+component = "export"
+priority = "must"
+status = "done"
+spec_refs = ["FR-035", "FR-036", "NFR-010"]
+depends_on = ["T-0009", "T-0011", "T-0012"]
+summary = "Backup export writer die IR + event-log bundelt met manifest/checksums en snippets default uitsluit."
+deliverables = [
+  "internal/export/bundle (writer + format structs)",
+  "internal/export/manifest (schemaVersion/appVersion/checksums)",
+  "internal/export/events (jsonl writer)"
+]
+estimate_days = 2.0
+dod = [
+  "Export produceert een zip met `manifest.json`, `patterns/*.json`, `events/*.jsonl`.",
+  "manifest bevat minimaal schemaVersion en checksums; checksums worden geverifieerd in een unit test.",
+  "Snippets zijn standaard uitgesloten; include-snippets is een expliciete optie (default false).",
+  "Export werkt volledig offline en schrijft naar user gekozen pad.",
+  "`go test ./...` bevat tests voor bundle structuur en checksum consistentie."
+]
+notes = "Copyright guardrails: geen automatische snippet export."
+
+[[tasks]]
+id = "T-0027"
+title = "Import backend: checksum verify + schema migration + conflict resolution"
+component = "export"
+priority = "must"
+status = "done"
+spec_refs = ["FR-037", "FR-035", "NFR-015", "NFR-004"]
+depends_on = ["T-0026", "T-0006", "T-0009", "T-0011"]
+summary = "Backup import reader die checksums valideert, migraties uitvoert en conflicts oplost (keep both/replace)."
+deliverables = [
+  "internal/export/bundle (reader + validation)",
+  "internal/export/import (apply to repos)",
+  "internal/core/migrate integration (during import)"
+]
+estimate_days = 2.5
+dod = [
+  "Import valideert checksums en faalt met duidelijke melding bij mismatch/corruptie.",
+  "Import probeert schema migrations; bij failure stopt import met user-friendly error.",
+  "Conflict resolution ondersteunt minimaal: keep both (nieuw patternId) en replace existing.",
+  "Events worden correct hersteld per instance en blijven append-only; geen data verlies in normale flow.",
+  "`go test ./...` bevat import roundtrip tests: export -> import -> replay determinisme."
+]
+notes = "Snippets import alleen als aanwezig én user expliciet toestaat; default flow houdt ze buiten."
+
+[[tasks]]
+id = "T-0028"
+title = "Backup/Restore scherm: export/import UI + conflicts + include snippets toggle"
+component = "tui"
+priority = "must"
+status = "done"
+spec_refs = ["FR-035", "FR-036", "FR-037", "NFR-010"]
+depends_on = ["T-0020", "T-0026", "T-0027"]
+summary = "TUI scherm voor backup export/import met conflictstrategie en snippet toggle default off."
+deliverables = [
+  "internal/tui/screens/backup (export/import flows)",
+  "internal/tui/components/conflicts (keep both/replace UI)"
+]
+estimate_days = 2.0
+dod = [
+  "Export flow laat user een pad kiezen en toont include-snippets toggle (default uit).",
+  "Import flow laat user een bundle kiezen en toont conflicts resolutie opties (keep both/replace).",
+  "Na import verschijnt het patroon in Library met correcte metadata/progress.",
+  "UI benadrukt copyright boundary: snippets niet standaard en nooit automatisch export.",
+  "Handmatige smoke: export één patroon, import in lege DB, start guided en zie voortgang correct."
+]
+
+[[tasks]]
+id = "T-0029"
+title = "Debug bundle export (zonder snippets) met build info + config + errors"
+component = "export"
+priority = "must"
+status = "done"
+spec_refs = ["NFR-017", "NFR-010"]
+depends_on = ["T-0003", "T-0013", "T-0007", "T-0026"]
+summary = "Offline debug bundle export met diagnostiek, zonder bronfragmenten/snippets."
+deliverables = [
+  "internal/observability/debugbundle (zip writer + collectors)",
+  "internal/observability/metrics (optioneel geanonimiseerd)"
+]
+estimate_days = 1.5
+dod = [
+  "Debug bundle export maakt een zip met app versie/build info, config snapshot, en recente validator/engine errors.",
+  "Bundle bevat standaard geen snippets/boektekst; dit is geverifieerd via unit test (content scan op snippet table of known fixture strings).",
+  "Bundle generatie werkt offline en faalt netjes bij file write errors.",
+  "Er is een documented 'how to' binnen de app (help modal of menu entry) om debug bundle te maken."
+]
+notes = "Privacy/copyright guardrails hebben prioriteit boven volledigheid."
+
+[[tasks]]
+id = "T-0030"
+title = "Testdata: 20 MVP patterns als golden fixtures (IR-only)"
+component = "qa"
+priority = "must"
+status = "done"
+spec_refs = ["NFR-003", "NFR-005", "FR-023"]
+depends_on = ["T-0005"]
+summary = "Samenstellen van 20 MVP amigurumi fixtures als IR JSON voor golden tests."
+deliverables = [
+  "testdata/patterns/mvp/*.json (20 IR fixtures)",
+  "testdata/README (korte beschrijving per fixture, zonder boektekst)"
+]
+estimate_days = 2.0
+dod = [
+  "Er zijn exact 20 MVP fixtures (spiral rounds) met variatie in repeats/inc/dec/finishing/markers.",
+  "Fixtures bevatten geen boektekst of substantiële excerpts; alleen semantische IR + sourceRefHints (zonder tekst).",
+  "Alle fixtures laden via IR JSON decoder zonder errors (`go test` helper)."
+]
+notes = "Fixtures zijn synthetisch of user-structured; geen copyright schending."
+
+[[tasks]]
+id = "T-0031"
+title = "Golden tests: IR -> atomic steps voor 20 MVP patterns"
+component = "qa"
+priority = "must"
+status = "done"
+spec_refs = ["NFR-003", "NFR-005", "FR-023"]
+depends_on = ["T-0030", "T-0014"]
+summary = "Deterministische golden tests die expected atomic steps vergelijken met engine output."
+deliverables = [
+  "internal/engine/golden_test.go (or equivalent)",
+  "testdata/golden/mvp/*.golden (expected steps output)"
+]
+estimate_days = 2.5
+dod = [
+  "Golden tests draaien deterministisch op alle platforms (line endings/encoding robuust).",
+  "Golden files bevatten stepId + primaryText + context per step (geen snippets).",
+  "Er is een test runner die failures leesbaar diff't (zonder enorme noise).",
+  "`CGO_ENABLED=0 go test ./...` slaagt lokaal."
+]
+
+[[tasks]]
+id = "T-0032"
+title = "Non-MVP fixtures (3) + golden tests voor uitbreidbaarheid"
+component = "qa"
+priority = "must"
+status = "done"
+spec_refs = ["FR-005", "NFR-005"]
+depends_on = ["T-0005", "T-0014"]
+summary = "3 niet-MVP patronen als fixtures met golden tests om IR/engine flexibiliteit te bewaken."
+deliverables = [
+  "testdata/patterns/non_mvp/turning_chain_countsAsStitch.json",
+  "testdata/patterns/non_mvp/granny_square_ch_spaces.json",
+  "testdata/patterns/non_mvp/blo_flo_sample.json",
+  "testdata/golden/non_mvp/*.golden"
+]
+estimate_days = 2.0
+dod = [
+  "Er zijn 3 non-MVP fixtures conform SPEC (turning chain toggles, granny square ch-spaces, BLO/FLO).",
+  "Golden tests draaien deterministisch IR -> atomic steps voor deze fixtures.",
+  "Fixtures zijn synthetisch en bevatten geen boektekst/snippets.",
+  "Test output maakt duidelijk welke node types/anchors gebruikt worden (type-level)."
+]
+notes = "UI hoeft deze technieken niet volledig te ondersteunen; engine/IR moet niet blokkeren op modelniveau."
+
+[[tasks]]
+id = "T-0033"
+title = "Unit tests: validator regels en gates"
+component = "qa"
+priority = "must"
+status = "todo"
+spec_refs = ["FR-017", "FR-018", "FR-019", "FR-020", "FR-021"]
+depends_on = ["T-0007"]
+summary = "Unit test suite voor validator: repeats, assertions policy, anchors, unknown tokens."
+deliverables = [
+  "internal/core/validate/*_test.go",
+  "testdata/validate/*.json (minimale cases)"
+]
+estimate_days = 1.5
+dod = [
+  "Tests dekken: invalid repeat nesting, times <= 0, unknown anchor kinds, missing CountAssertion policy, unknown tokens list.",
+  "Tests controleren hard fail vs warning gedrag expliciet.",
+  "Tests draaien zonder netwerk en zonder CGO (`CGO_ENABLED=0 go test ./...`)."
+]
+
+[[tasks]]
+id = "T-0034"
+title = "Unit tests: engine transitions (confirm/undo/jump/checkpoints) + stepId stability"
+component = "qa"
+priority = "must"
+status = "todo"
+spec_refs = ["FR-023", "FR-027", "FR-030", "FR-031", "NFR-005"]
+depends_on = ["T-0015", "T-0016", "T-0017", "T-0018"]
+summary = "Engine scenario tests voor deterministische replay en correcte cursor transitions."
+deliverables = [
+  "internal/engine/*_test.go",
+  "testdata/engine/scenarios/*.json (IR + event logs)"
+]
+estimate_days = 2.0
+dod = [
+  "Tests dekken: StepConfirmed advance, Undo replay, JumpTo valid/invalid targets, CountChecked mismatch handling, CountAdjusted effect.",
+  "stepId stabiliteit is getest: zelfde IR+events produceert dezelfde stepId volgorde op repeat runs.",
+  "Granularity switching tests bevestigen dat state niet corrupt raakt.",
+  "`go test ./...` slaagt lokaal en is deterministisch."
+]
+
+[[tasks]]
+id = "T-0035"
+title = "Crash-safety tests: event append atomicity + replay consistency"
+component = "qa"
+priority = "must"
+status = "todo"
+spec_refs = ["NFR-004", "NFR-015"]
+depends_on = ["T-0011", "T-0008", "T-0013"]
+summary = "Integratietests die aantonen dat event-log appends atomair zijn en replay altijd consistente derived state oplevert."
+deliverables = [
+  "internal/storage/repo/events_crash_test.go (integration style)",
+  "internal/engine/replay_integration_test.go"
+]
+estimate_days = 2.5
+dod = [
+  "Er is een test die bevestigt: geen partial event writes bij geforceerde fout in transactionele append.",
+  "Er is een test die bevestigt: replay na 'unexpected exit scenario' (gesimuleerd) geeft consistente derived state.",
+  "WAL-mode is actief tijdens de test run (assert via PRAGMA readback).",
+  "Tests draaien lokaal met `CGO_ENABLED=0 go test ./...`."
+]
+notes = "Simulatie mag via subprocess/helper binary om crash dichter te benaderen, maar moet platform-safe blijven."
+
+[[tasks]]
+id = "T-0036"
+title = "Performance check: next-step latency budget + startup sanity"
+component = "qa"
+priority = "must"
+status = "todo"
+spec_refs = ["NFR-003", "NFR-002", "NFR-005"]
+depends_on = ["T-0014", "T-0030"]
+summary = "Meetbare checks voor engine latency (P95) en basis startup performance op lokale machine."
+deliverables = [
+  "internal/engine/bench_test.go (benchmarks)",
+  "scripts/perf/run.sh (optioneel, local only)",
+  "perf/notes.md (local notes; geen CI gate)"
+]
+estimate_days = 1.5
+dod = [
+  "Er is een benchmark of perf-test die next-step berekening meet op een subset van de 20 MVP patterns.",
+  "Resultaten tonen dat P95 doel (<50ms) haalbaar is op mid-tier laptop/desktop (manual run en vastgelegd).",
+  "Replay determinisme wordt bevestigd in dezelfde run (no flaky timing dependence).",
+  "Geen verplichte CI gates toegevoegd; dit blijft een manual dev check."
+]
+notes = "NFR-002/NFR-003 zijn targets; bij overschrijding: profiler output en concrete bottleneck noteren."
+
+[[tasks]]
+id = "T-0037"
+title = "GoReleaser configuratie: cross-platform artifacts + checksums"
+component = "release"
+priority = "must"
+status = "todo"
+spec_refs = ["NFR-016", "NFR-013", "NFR-012"]
+depends_on = ["T-0001"]
+summary = "Release pipeline configureren voor macOS/Linux/Windows single-binary artifacts met checksums."
+deliverables = [
+  ".goreleaser.yaml",
+  "internal/buildinfo (version injection via ldflags)",
+  "dist/ (ignored output; build artifact)"
+]
+estimate_days = 1.5
+dod = [
+  "`goreleaser release --snapshot --clean` (of equivalent) produceert artifacts voor macOS/Linux/Windows.",
+  "Artifacts bevatten checksums en de binary toont correcte `--version` output.",
+  "Build gebruikt `CGO_ENABLED=0` en slaagt zonder platform-specifieke dependencies.",
+  "Release config blijft minimaal (geen extra packaging tenzij expliciet gewenst)."
+]
+
+[[tasks]]
+id = "T-0038"
+title = "CI smoke build op macOS/Linux/Windows (non-gating)"
+component = "release"
+priority = "must"
+status = "todo"
+spec_refs = ["NFR-012", "NFR-013", "NFR-016"]
+depends_on = ["T-0037"]
+summary = "Minimale CI workflow die cross-platform build smoke-test uitvoert zonder zware gates/automatisering."
+deliverables = [
+  ".github/workflows/build-smoke.yml (of equivalent CI config)"
+]
+estimate_days = 1.0
+dod = [
+  "CI draait op macOS/Linux/Windows en doet minimaal: `go test ./...` en/of `goreleaser --snapshot` build.",
+  "CI vereist geen secrets en gebruikt geen netwerk voor dependency install buiten `go` module download.",
+  "Workflow is bewust minimal en niet ingericht als complex merge gate (geen extra checks/policies)."
+]
+notes = "In lijn met repo voorkeur: lichtgewicht, geen CI/CD complexiteit."
+
+[[tasks]]
+id = "T-0039"
+title = "Documentatie MVP: keybindings, rights boundary, backup format"
+component = "release"
+priority = "must"
+status = "todo"
+spec_refs = ["NFR-014", "NFR-010", "FR-035", "FR-036"]
+depends_on = ["T-0028"]
+summary = "Essentiële docs voor gebruik en compliance: keybindings, rechtenmodus, en backup structuur."
+deliverables = [
+  "docs/keybindings.md",
+  "docs/rights-boundary.md",
+  "docs/backup-format.md"
+]
+estimate_days = 1.0
+dod = [
+  "Keybindings doc dekt alle globale en scherm-specifieke shortcuts (keyboard-only).",
+  "Rights boundary doc legt guided_only vs user_excerpt uit, inclusief export default snippet-exclusie.",
+  "Backup format doc beschrijft zip structuur, manifest, checksums, events jsonl en conflict strategie.",
+  "Docs bevatten geen boektekst/snippets en verwijzen expliciet naar guardrails."
+]
+notes = "Alleen MVP-relevante docs; geen uitgebreide handleiding buiten scope."
+
+[[tasks]]
+id = "T-0040"
+title = "Override flow: 'Pattern is wrong' (expected count override met logging)"
+component = "tui"
+priority = "should"
+status = "todo"
+spec_refs = ["FR-034", "FR-033"]
+depends_on = ["T-0025"]
+summary = "Sta toe dat user expected counts kan overrulen met expliciete logging voor real-world inconsistenties."
+deliverables = [
+  "internal/engine/mismatch (override support)",
+  "internal/tui/screens/guided (override UI action)"
+]
+estimate_days = 1.5
+dod = [
+  "UI biedt een optie 'patroon klopt niet' of equivalent tijdens mismatch/recovery.",
+  "Actie logt ErrorFlagged of SettingChanged met user reason (zonder boektekst).",
+  "Na override kan user door met guided mode met duidelijke warning indicator.",
+  "`go test ./...` bevat minimaal één scenario test voor override logging."
+]
+
+[[tasks]]
+id = "T-0041"
+title = "Editor templates voor amigurumi (start sphere)"
+component = "tui"
+priority = "should"
+status = "todo"
+spec_refs = ["FR-015"]
+depends_on = ["T-0022"]
+summary = "Sneller starten door een template die 10+ rounds invult met aanpasbare placeholders."
+deliverables = [
+  "internal/tui/screens/editor (template action)",
+  "internal/core/templates/amigurumi (template generator)"
+]
+estimate_days = 1.5
+dod = [
+  "Template actie vult minimaal 10 rounds met geldige IR nodes en CountAssertions.",
+  "User kan template rounds aanpassen zonder validator errors.",
+  "Template bevat geen bronfragmenten; alleen semantische IR.",
+  "Handmatige smoke: nieuw patroon -> apply template -> start guided zonder blocking errors."
+]
+
+[[tasks]]
+id = "T-0042"
+title = "Editor actie: 'Copy last round and edit'"
+component = "tui"
+priority = "should"
+status = "todo"
+spec_refs = ["FR-016"]
+depends_on = ["T-0022"]
+summary = "Verlaag invoerwerk door vorige ronde te dupliceren met correcte index/id updates."
+deliverables = [
+  "internal/tui/screens/editor (duplicate action)",
+  "internal/core/irops (clone helpers)"
+]
+estimate_days = 0.75
+dod = [
+  "Duplicate round kopieert body + assertions + notes, en past index/id aan zodat IR geldig blijft.",
+  "Validator blijft groen (geen structurele errors) na dupliceren en opslaan.",
+  "Handmatige smoke: duplicate 3x, reorder, start guided werkt."
+]
+
+[[tasks]]
+id = "T-0043"
+title = "Startup performance tune voor 50 patterns"
+component = "qa"
+priority = "should"
+status = "todo"
+spec_refs = ["NFR-002"]
+depends_on = ["T-0009", "T-0020"]
+summary = "Profiling en optimalisaties zodat app startklaar is binnen ~2s bij 50 patronen."
+deliverables = [
+  "internal/storage/repo/patterns (query optimizations/index checks)",
+  "internal/tui/bootstrap (lazy loading where safe)",
+  "perf/startup-notes.md (local notes; geen CI gate)"
+]
+estimate_days = 1.5
+dod = [
+  "Manual test met seeded DB (50 patterns) toont 'startklaar' binnen ~2s op mid-tier laptop/desktop (gemeten en genoteerd).",
+  "Library query gebruikt indexes en vermijdt onnodig IR blob load voor lijstweergave.",
+  "Geen regressie in correctness; `go test ./...` blijft slagen."
+]
+notes = "Geen prematuur optimaliseren; eerst meten, dan gericht fixen."
+
+[[tasks]]
+id = "T-0044"
+title = "Encrypted backups (passphrase) voor export/import"
+component = "export"
+priority = "may"
+status = "todo"
+spec_refs = ["NFR-009"]
+depends_on = ["T-0026", "T-0027"]
+summary = "Optionele passphrase-encryptie voor backup bundles, zonder CGO en cross-platform."
+deliverables = [
+  "internal/export/crypto (encrypt/decrypt wrapper)",
+  "internal/tui/screens/backup (passphrase UI prompts)"
+]
+estimate_days = 2.5
+dod = [
+  "User kan bij export encryptie aan/uit zetten en een passphrase kiezen.",
+  "Import detecteert encrypted bundle en vraagt passphrase; verkeerde passphrase faalt veilig.",
+  "Encryptie werkt op macOS/Linux/Windows en met `CGO_ENABLED=0` builds.",
+  "Bundle metadata lekt geen snippet content; plaintext output zonder passphrase is niet leesbaar."
+]
+notes = "Spec noemt encryptie als SHOULD; implementatie alleen als dit expliciet gewenst is voor MVP scope."
+
+[[tasks]]
+id = "T-0045"
+title = "Opt-in telemetry (offline-friendly, geen snippets)"
+component = "release"
+priority = "may"
+status = "todo"
+spec_refs = ["NFR-011", "NFR-010"]
+depends_on = ["T-0003"]
+summary = "Optionele telemetry die alleen opt-in is en nooit bronfragmenten logt; default uit."
+deliverables = [
+  "internal/observability/telemetry (event sink; local buffer/file)",
+  "internal/tui/screens/setup (opt-in toggle)"
+]
+estimate_days = 2.0
+dod = [
+  "Telemetry is default uit en vereist expliciete opt-in in UI.",
+  "Telemetry events bevatten geen snippet/boektekst; stepId mag gehasht worden.",
+  "Telemetry werkt offline (geen netwerk afhankelijkheid) of is volledig uitgeschakeld zonder impact.",
+  "Er is een test die bevestigt dat telemetry payload geen snippet velden bevat."
+]
+notes = "Netwerk verzending is niet nodig voor MVP; focus op privacy-safe lokale capture."
+
+[[tasks]]
+id = "T-0046"
+title = "Knip/plak assist voor korte fragmenten met confidence/reasons en review"
+component = "tui"
+priority = "must"
+status = "todo"
+spec_refs = ["FR-038"]
+depends_on = ["T-0022", "T-0021"]
+summary = "Assistent die tokens/legend suggereert en repeat-structuur herkent, met expliciete review (geen blind import)."
+deliverables = [
+  "internal/assist/paste (tokenize + suggest legend mappings)",
+  "internal/assist/structure (repeat recognition with uncertainty)",
+  "internal/tui/screens/assist (review UI)"
+]
+estimate_days = 3.0
+dod = [
+  "User kan een kort tekstfragment plakken en krijgt suggesties met confidence + reasons + unknownTokens.",
+  "User kan suggesties bevestigen/corrigeren voordat IR wordt aangepast.",
+  "Assistent werkt alleen als review flow; geen automatische ingest van volledige boekteksten.",
+  "Snippets worden niet automatisch opgeslagen; rights.mode guardrails blijven gelden."
+]
+notes = "Binnen copyright boundary blijven: geen blind import, geen sharing, geen default snippet opslag."
+
+[[tasks]]
+id = "T-0047"
+title = "Nieuw patroon flow: create default PatternDoc + open Setup/Editor"
+component = "tui"
+priority = "must"
+status = "todo"
+spec_refs = ["FR-001", "FR-006", "FR-011", "NFR-001"]
+depends_on = ["T-0020", "T-0021", "T-0022", "T-0009", "T-0005"]
+summary = "‘Nieuw patroon’ vanuit Library maakt een minimaal geldig patroon aan (incl. 1 part + 1 instance) en navigeert naar Setup/Editor."
+deliverables = [
+  "internal/tui/flows/newpattern (wizard/flow)",
+  "internal/core/irfactory (default PatternDoc generator)"
+]
+estimate_days = 1.5
+dod = [
+  "Vanuit Library empty state en toolbar werkt 'Nieuw patroon' volledig via keyboard-only flow.",
+  "Nieuw patroon heeft rights.mode=guided_only default, dialectProfile default, en minimaal 1 Part + 1 PartInstance.",
+  "Pattern is persistent in DB en verschijnt direct in Library na aanmaken.",
+  "Handmatige smoke: create -> setup -> editor -> guided start is mogelijk zonder crashes."
+]
+notes = "Default IR mag leeg zijn (0 rounds) zolang validator/UX dit netjes ondersteunt."
+
+[[tasks]]
+id = "T-0048"
+title = "Granularity switching in Guided Mode + persistent via SettingChanged"
+component = "tui"
+priority = "must"
+status = "todo"
+spec_refs = ["NFR-006", "NFR-005", "FR-023"]
+depends_on = ["T-0024", "T-0014", "T-0011"]
+summary = "User kan granularity mode wisselen (micro/repeat/row) zonder progress corruptie; keuze is persistent."
+deliverables = [
+  "internal/tui/screens/guided (granularity selector + keybinds)",
+  "internal/storage/repo/events (SettingChanged event usage)",
+  "internal/engine (granularity loaded from events or app state)"
+]
+estimate_days = 2.0
+dod = [
+  "Guided Mode heeft een keyboard-only manier om granularity te wisselen en toont dit in contextbalk.",
+  "Wisselen van granularity verandert alleen step boundaries; cursor/progress blijft consistent (verified via scenario test).",
+  "Granularity keuze wordt vastgelegd (SettingChanged) en herstelt correct na app restart.",
+  "Handmatige smoke: wissel granularity midden in een round en ga door zonder steps te verliezen."
+]
+notes = "Implementatie mag setting per instance of globaal zijn, maar moet deterministisch replaybaar blijven."
+
+[[tasks]]
+id = "T-0049"
+title = "DialectProfile wijzigen logt SettingChanged en triggert re-validatie"
+component = "tui"
+priority = "must"
+status = "todo"
+spec_refs = ["FR-008", "FR-017", "NFR-008"]
+depends_on = ["T-0021", "T-0011", "T-0007"]
+summary = "DialectProfile wijziging wordt gelogd als SettingChanged en validator output (incl. unknown tokens) wordt direct geüpdatet."
+deliverables = [
+  "internal/tui/screens/setup (dialect change behavior)",
+  "internal/storage/repo/events (SettingChanged append for dialect)",
+  "internal/tui/components/validationpanel (refresh on change)"
+]
+estimate_days = 1.0
+dod = [
+  "Wanneer user dialectProfile wijzigt, wordt een SettingChanged event vastgelegd (zonder snippets/boektekst).",
+  "Na wijziging herberekent de UI validator warnings/errors en unknown tokens lijst direct.",
+  "Na app restart blijft dialectProfile correct en komt de validator output overeen met opgeslagen state."
+]
+
+[[tasks]]
+id = "T-0050"
+title = "Basic install/run instructions (single-binary) + smoke commands"
+component = "release"
+priority = "must"
+status = "todo"
+spec_refs = ["NFR-016", "NFR-013", "NFR-012"]
+depends_on = ["T-0037", "T-0038"]
+summary = "Minimale installatie- en run-instructies voor de cross-platform single-binary release."
+deliverables = [
+  "docs/install.md",
+  "docs/quickstart.md"
+]
+estimate_days = 0.75
+dod = [
+  "Docs beschrijven download, uitvoeren, en `--version` check voor macOS/Linux/Windows.",
+  "Docs vermelden dat app offline-first is en waar data lokaal wordt opgeslagen (zonder privacy-lekkage).",
+  "Docs bevatten de minimale smoke commands die aansluiten op CI/build (go test/build, goreleaser snapshot)."
+]
+notes = "Geen uitgebreide packaging instructies tenzij expliciet gevraagd."
+
+[[tasks]]
+id = "T-0051"
+title = "Offline-first guardrail: expliciete check op netwerkgebruik in core flows"
+component = "qa"
+priority = "must"
+status = "todo"
+spec_refs = ["NFR-001", "NFR-010"]
+depends_on = ["T-0019", "T-0028", "T-0025"]
+summary = "Verifieer dat library/editor/guided/export/import flows geen netwerk vereisen en geen bronfragmenten lekken."
+deliverables = [
+  "internal/qa/offline_test.go (or integration scenario tests)",
+  "docs/privacy-notes.md (kort, zonder snippets)"
+]
+estimate_days = 1.0
+dod = [
+  "Er is een test of scripted scenario dat de kernflows uitvoert zonder netwerk calls (geen HTTP/DNS dependencies).",
+  "Er is een test die bevestigt dat logs/debug bundle/export default geen snippets bevatten.",
+  "Manual runbook bestaat: disable network en herhaal export/import + guided confirm."
+]
+notes = "Geen CI gate policy toevoegen; dit is een verificatie-artefact en manual runbook."
+
+[[tasks]]
+id = "T-0052"
+title = "Pattern metadata bewerken in Setup (titel/author/notes/sourceRef)"
+component = "tui"
+priority = "must"
+status = "todo"
+spec_refs = ["FR-003"]
+depends_on = ["T-0021", "T-0009", "T-0020"]
+summary = "Breid Pattern Setup uit zodat de user de verplichte metadata kan beheren en deze zichtbaar is in de Library."
+deliverables = [
+  "internal/tui/screens/setup (metadata fields + keyboard nav)",
+  "internal/storage/repo/patterns (persist title/author/notes/sourceRef updates)",
+  "internal/tui/screens/library (refresh title display on update)"
+]
+estimate_days = 1.25
+dod = [
+  "Setup scherm biedt velden voor titel, author, pattern-notes en sourceRef, volledig keyboard-first.",
+  "Wijzigingen worden opgeslagen en blijven na app restart behouden (handmatige smoke).",
+  "Library toont de bijgewerkte titel direct na save (zonder app restart).",
+  "Notes zijn user-generated en worden behandeld als 'user notes' (geen snippets/boektekst); er is geen automatische snippet-opslag.",
+  "Er is minimaal 1 test die aantoont dat update van metadata in DB roundtript (write->read)."
+]
+notes = "FR-003 vereist metadata-bewerking; sourceRef blijft binnen rights boundary."
+
+[[tasks]]
+id = "T-0053"
+title = "Round notes: editor entry + guided detail weergave"
+component = "tui"
+priority = "must"
+status = "todo"
+spec_refs = ["FR-011", "NFR-010"]
+depends_on = ["T-0022", "T-0024", "T-0013", "T-0009"]
+summary = "Voeg ondersteuning toe voor ronde-/toer-notities in de editor en toon ze in guided mode als context (user notes, geen boektekst)."
+deliverables = [
+  "internal/tui/screens/editor (add/edit/delete round notes)",
+  "internal/engine (expose active round notes in step context/details)",
+  "internal/tui/screens/guided (detail panel toont round notes wanneer aanwezig)",
+  "internal/storage/repo/patterns (persist notes in IR JSON)"
+]
+estimate_days = 1.5
+dod = [
+  "Editor laat user per ronde/toer één of meerdere notes toevoegen en bewerken (vrije tekst).",
+  "Guided Mode toont round notes in de detailssectie voor de actieve ronde/toer (togglebaar, zodat primary next-step kaart dominant blijft).",
+  "Notes worden meegeëxporteerd als onderdeel van IR (en vallen niet onder snippet include/exclude toggle).",
+  "Er is een test die bevestigt dat notes niet in logs terechtkomen via structured logging (scrub/limit)."
+]
+notes = "Notes zijn expliciet user-generated; UI copy moet vermijden dat users boekteksten kopiëren."
+
+[[tasks]]
+id = "T-0054"
+title = "Engine: ondersteuning voor finishing/fasten_off/note ops + terminal 'done' state"
+component = "engine"
+priority = "must"
+status = "todo"
+spec_refs = ["FR-023", "FR-022"]
+depends_on = ["T-0013", "T-0014", "T-0030"]
+summary = "Zorg dat niet-steek operaties als uitvoerbare steps werken en dat de engine een duidelijke eindstatus heeft wanneer het patroon klaar is."
+deliverables = [
+  "internal/engine/step_render (op types: note, finishing, fasten_off)",
+  "internal/engine/state (done/complete state contract)",
+  "internal/engine/tests (golden of scenario tests voor finishing flow)"
+]
+estimate_days = 1.25
+dod = [
+  "Given een IR met finishing/fasten_off/note ops, when engine iterates, then deze ops verschijnen als Atomic Steps met duidelijke tekst.",
+  "Wanneer de laatste op is bevestigd, geeft de engine een expliciete 'done' status terug (geen panics/no next-step ambiguïteit).",
+  "StepIds blijven deterministisch (AST-path gebaseerd) en replaybaar over export/import.",
+  "Non-MVP fixtures blijven groen; finishing support introduceert geen regressie in bestaande golden tests."
+]
+notes = "Finishing wordt gezien als step-type binnen dezelfde engine; UI kan hier bovenop een checklist bouwen."
+
+[[tasks]]
+id = "T-0055"
+title = "Guided afronden: completion scherm + instance 'completed' status zetten"
+component = "tui"
+priority = "must"
+status = "todo"
+spec_refs = ["FR-004", "FR-023"]
+depends_on = ["T-0024", "T-0027", "T-0010", "T-0054", "T-0028"]
+summary = "Wanneer guided mode het einde bereikt, toon afronding en laat user de PartInstance afronden (completed) en terugkeren naar Instances/Library."
+deliverables = [
+  "internal/tui/screens/guided (completion state + actions)",
+  "internal/storage/repo/instances (status update path)",
+  "internal/tui/screens/instances (reflect completed status)"
+]
+estimate_days = 1.5
+dod = [
+  "Na de laatste step toont Guided Mode een completion view met duidelijke status ('klaar') en acties: markeer instance als completed, of terug zonder afronden.",
+  "Markeer completed schrijft instance.status=completed en update lastActivity zodat Library sorting correct werkt.",
+  "User kan na afronden de instance niet per ongeluk verder 'confirm'en; guided start op completed instance vraagt expliciete herstart/new instance.",
+  "Handmatige smoke: Journey A afronden werkt inclusief finishing steps en completion actie."
+]
+notes = "Houd het simpel: completion view is een TUI state; geen extra project analytics."
+
+
+# test change
