@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { parse as parseToml, stringify as stringifyToml } from "@iarna/toml";
+import packageJson from "../package.json";
 import {
   createCliRenderer,
   BoxRenderable,
@@ -54,6 +55,7 @@ const REQMAN_META_TABLE = "__reqman";
 const REQMAN_SCHEMA_VERSION = 1;
 const REQMAN_SCHEMA_VERSION_KEY = "schema_version";
 const REQMAN_SCHEMA_JSON_KEY = "schema_json";
+const APP_VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.0.0";
 
 function parseArgs(argv: string[]) {
   let schemaPath: string | undefined;
@@ -151,16 +153,7 @@ Notes:
 }
 
 function getAppVersion() {
-  try {
-    const raw = fs.readFileSync(path.resolve("package.json"), "utf8");
-    const pkg = JSON.parse(raw) as { version?: string };
-    if (pkg.version && typeof pkg.version === "string") {
-      return pkg.version;
-    }
-  } catch {
-    // ignore
-  }
-  return "0.0.0";
+  return APP_VERSION;
 }
 
 function parseSchema(raw: unknown): DatabaseSchema {
