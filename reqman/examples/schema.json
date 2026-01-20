@@ -3,7 +3,7 @@
   "primaryKey": "id",
   "description": "Sample task list",
   "fields": [
-    { "name": "id", "type": "number", "required": true },
+    { "name": "id", "type": "number", "label": "ID (auto)", "required": true },
     { "name": "title", "type": "text", "required": true },
     { "name": "done", "type": "boolean" },
     { "name": "priority", "type": "choice", "options": ["low", "medium", "high"] },

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import crypto from "node:crypto";
 import { parse as parseToml, stringify as stringifyToml } from "@iarna/toml";
 import packageJson from "../package.json";
 import {
@@ -38,6 +39,7 @@ type FormValue = string | boolean;
 
 type FieldControl = {
   field: FieldSchema;
+  isPrimaryKey: boolean;
   container: BoxRenderable;
   input: InputRenderable | TabSelectRenderable | SelectRenderable;
   label: TextRenderable;
@@ -527,6 +529,71 @@ function formPlaceholder(field: FieldSchema) {
   return "";
 }
 
+function formatDateKey(date: Date) {
+  const pad = (input: number) => String(input).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function formatTimeKey(date: Date) {
+  const pad = (input: number) => String(input).padStart(2, "0");
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function generatePrimaryKeyValue(schema: DatabaseSchema, records: Record<string, unknown>[]) {
+  const primaryKey = schema.primaryKey;
+  if (!primaryKey) {
+    return { value: undefined, error: undefined };
+  }
+  const field = schema.fields.find((entry) => entry.name === primaryKey);
+  if (!field) {
+    return { value: undefined, error: `Primary key '${primaryKey}' is not defined in fields.` };
+  }
+  const existing = new Set(records.map((record) => String(record[primaryKey])));
+  if (field.type === "number") {
+    let max = 0;
+    for (const record of records) {
+      const raw = record[primaryKey];
+      if (typeof raw === "number" && Number.isFinite(raw)) {
+        max = Math.max(max, raw);
+      }
+    }
+    return { value: max + 1, error: undefined };
+  }
+  if (field.type === "text") {
+    let value = crypto.randomUUID();
+    while (existing.has(value)) {
+      value = crypto.randomUUID();
+    }
+    return { value, error: undefined };
+  }
+  if (field.type === "date") {
+    let date = new Date();
+    let value = formatDateKey(date);
+    let guard = 0;
+    while (existing.has(value) && guard < 3650) {
+      date = new Date(date.getTime() + 24 * 60 * 60 * 1000);
+      value = formatDateKey(date);
+      guard += 1;
+    }
+    return { value, error: undefined };
+  }
+  if (field.type === "time") {
+    let date = new Date();
+    let value = formatTimeKey(date);
+    let guard = 0;
+    while (existing.has(value) && guard < 86400) {
+      date = new Date(date.getTime() + 1000);
+      value = formatTimeKey(date);
+      guard += 1;
+    }
+    return { value, error: undefined };
+  }
+  return {
+    value: undefined,
+    error: `Primary key '${primaryKey}' uses unsupported type '${field.type}' for auto-generation.`,
+  };
+}
+
 function isTextEntry(renderable: Renderable | null): renderable is InputRenderable {
   return Boolean(renderable && renderable instanceof InputRenderable);
 }
@@ -730,7 +797,9 @@ async function startApp(
   let focusIndex = 0;
   const formValues: Record<string, FormValue> = {};
 
+  const primaryKeyName = schema.primaryKey;
   const fieldControls: FieldControl[] = schema.fields.map((field) => {
+    const isPrimaryKey = Boolean(primaryKeyName && field.name === primaryKeyName);
     const container = new BoxRenderable(renderer, {
       id: `field-${field.name}`,
       flexDirection: "column",
@@ -738,7 +807,7 @@ async function startApp(
     });
     const label = new TextRenderable(renderer, {
       id: `label-${field.name}`,
-      content: formatFieldLabel(field),
+      content: `${formatFieldLabel(field)}${isPrimaryKey ? " (auto)" : ""}`,
       height: 1,
     });
 
@@ -782,7 +851,11 @@ async function startApp(
     container.add(input);
     formContainer.add(container);
 
-    return { field, container, input, label };
+    if (isPrimaryKey) {
+      (input as unknown as { _focusable: boolean })._focusable = false;
+    }
+
+    return { field, isPrimaryKey, container, input, label };
   });
 
   function setStatus(message: string) {
@@ -872,7 +945,7 @@ async function startApp(
     rightPanel.title = inForm ? "Preview" : "Details";
     updateHelpForMode();
     if (inForm) {
-      const inputs = fieldControls.map((control) => control.input);
+      const inputs = fieldControls.filter((control) => !control.isPrimaryKey).map((control) => control.input);
       setFocus(inputs, 0);
     } else {
       setFocus([list, filterInput], 0);
@@ -880,25 +953,29 @@ async function startApp(
     renderer.requestRender();
   }
 
+  function applyControlValue(control: FieldControl, value: unknown) {
+    const { field, input } = control;
+    if (input instanceof InputRenderable) {
+      const textValue = value === undefined || value === null ? "" : String(value instanceof Date ? formatDateValue(field.type, value) : value);
+      input.value = textValue;
+      formValues[field.name] = textValue;
+    } else if (input instanceof TabSelectRenderable) {
+      const boolValue = Boolean(value);
+      input.setSelectedIndex(boolValue ? 0 : 1);
+      formValues[field.name] = boolValue;
+    } else {
+      const options = field.options ?? [];
+      const valueString = value === undefined || value === null ? "" : String(value);
+      const selectedIndex = Math.max(0, options.findIndex((option) => option === valueString));
+      input.setSelectedIndex(selectedIndex);
+      formValues[field.name] = options[selectedIndex] ?? "";
+    }
+  }
+
   function resetFormValues(record?: Record<string, unknown>) {
     for (const control of fieldControls) {
-      const { field, input } = control;
-      const value = record?.[field.name];
-      if (input instanceof InputRenderable) {
-        const textValue = value === undefined || value === null ? "" : String(value instanceof Date ? formatDateValue(field.type, value) : value);
-        input.value = textValue;
-        formValues[field.name] = textValue;
-      } else if (input instanceof TabSelectRenderable) {
-        const boolValue = Boolean(value);
-        input.setSelectedIndex(boolValue ? 0 : 1);
-        formValues[field.name] = boolValue;
-      } else {
-        const options = field.options ?? [];
-        const valueString = value === undefined || value === null ? "" : String(value);
-        const selectedIndex = Math.max(0, options.findIndex((option) => option === valueString));
-        input.setSelectedIndex(selectedIndex);
-        formValues[field.name] = options[selectedIndex] ?? "";
-      }
+      const value = record?.[control.field.name];
+      applyControlValue(control, value);
     }
     updatePreview();
   }
@@ -906,6 +983,17 @@ async function startApp(
   function openNewRecord() {
     editingIndex = null;
     resetFormValues();
+    if (primaryKeyName) {
+      const { value, error } = generatePrimaryKeyValue(schema, records);
+      if (error) {
+        setStatus(error);
+        return;
+      }
+      const control = fieldControls.find((entry) => entry.field.name === primaryKeyName);
+      if (control) {
+        applyControlValue(control, value);
+      }
+    }
     setStatus("Creating new record.");
     setMode("new");
   }
@@ -934,6 +1022,19 @@ async function startApp(
 
   function saveForm() {
     const { record, errors } = buildRecordFromForm(schema, formValues);
+    if (primaryKeyName) {
+      const pkValue = mode === "edit" && editingIndex !== null ? records[editingIndex]?.[primaryKeyName] : undefined;
+      if (pkValue !== undefined) {
+        record[primaryKeyName] = pkValue;
+      } else if (record[primaryKeyName] === undefined) {
+        const { value, error } = generatePrimaryKeyValue(schema, records);
+        if (error) {
+          setStatus(error);
+          return;
+        }
+        record[primaryKeyName] = value;
+      }
+    }
     if (errors.length > 0) {
       setStatus(`Validation errors: ${errors.join(" ")}`);
       return;
@@ -968,6 +1069,9 @@ async function startApp(
   });
 
   for (const control of fieldControls) {
+    if (control.isPrimaryKey) {
+      continue;
+    }
     if (control.input instanceof InputRenderable) {
       control.input.on(InputRenderableEvents.INPUT, (value: string) => {
         formValues[control.field.name] = value;

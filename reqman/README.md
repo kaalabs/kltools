@@ -24,6 +24,9 @@ npm start -- ./examples/data.toml
 Reqman stores the schema inside the TOML database under `[__reqman].schema_json`,
 so you can run it later with only the database file path.
 
+If a schema defines `primaryKey`, Reqman auto-generates it on new records and keeps
+the primary key read-only in the form UI.
+
 ### Schema format
 
 ```json
@@ -32,7 +35,7 @@ so you can run it later with only the database file path.
   "primaryKey": "id",
   "description": "Task list",
   "fields": [
-    { "name": "id", "type": "number", "required": true },
+    { "name": "id", "type": "number", "label": "ID (auto)", "required": true },
     { "name": "title", "type": "text", "required": true },
     { "name": "done", "type": "boolean" },
     { "name": "priority", "type": "choice", "options": ["low", "medium", "high"] },

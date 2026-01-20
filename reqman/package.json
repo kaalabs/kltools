@@ -1,6 +1,6 @@
 {
   "name": "reqman",
-  "version": "0.14.1",
+  "version": "0.15.0",
   "description": "TUI TOML database manager powered by OpenTUI.",
   "private": true,
   "type": "module",
