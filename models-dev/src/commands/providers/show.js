@@ -6,13 +6,12 @@ import {formatInteger, renderTable, truncate} from "../../lib/format.js";
 export default class ProvidersShow extends BaseCommand {
   static summary = "Show details for a provider and its models";
 
-  static args = [
-    Args.string({
-      name: "providerId",
+  static args = {
+    providerId: Args.string({
       required: true,
       description: "Provider id",
     }),
-  ];
+  };
 
   static flags = {
     ...BaseCommand.baseFlags,

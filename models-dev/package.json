@@ -1,6 +1,6 @@
 {
   "name": "modelsdev-cli",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "CLI to query https://models.dev/api.json for providers and model metadata",
   "license": "MIT",
   "type": "module",

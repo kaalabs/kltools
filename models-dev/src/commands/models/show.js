@@ -13,13 +13,12 @@ import {formatCost, formatInteger, modelFeaturesShort, modalitiesShort} from "..
 export default class ModelsShow extends BaseCommand {
   static summary = "Show details for a model";
 
-  static args = [
-    Args.string({
-      name: "ref",
+  static args = {
+    ref: Args.string({
       required: true,
       description: "providerId/modelId or modelId",
     }),
-  ];
+  };
 
   async run() {
     const {args, flags} = await this.parse(ModelsShow);

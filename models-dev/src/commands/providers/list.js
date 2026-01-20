@@ -5,7 +5,7 @@ import {renderTable, truncate} from "../../lib/format.js";
 
 export default class ProvidersList extends BaseCommand {
   static summary = "List providers from models.dev";
-  static args = [];
+  static args = {};
 
   static flags = {
     ...BaseCommand.baseFlags,
