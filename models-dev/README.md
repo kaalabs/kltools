@@ -284,5 +284,3 @@ FLAGS
 GLOBAL FLAGS
   --json  Format output as json.
 ```
-<!-- commandsstop -->
-# modelsdev-cli
