@@ -10,6 +10,39 @@ npm install
 npm link
 ```
 
+## Binary distribution (Ubuntu 24.04)
+
+Build the tarballs (writes to `dist/`):
+
+```bash
+npx oclif pack tarballs --targets linux-x64,linux-arm64
+```
+
+Other targets:
+
+```bash
+npx oclif pack tarballs --targets darwin-x64,darwin-arm64
+npx oclif pack tarballs --targets win32-x64
+```
+
+Notes:
+
+- Windows tarball packaging requires 7-zip to be installed and available on PATH.
+- The packer downloads Node binaries during packaging.
+
+Install from a built tarball (prompts you to select one):
+
+```bash
+bash scripts/install-ubuntu.sh
+```
+
+Optional overrides:
+
+```bash
+PREFIX=/opt bash scripts/install-ubuntu.sh
+TARBALL=dist/modelsdev-<version>-linux-x64.tar.gz bash scripts/install-ubuntu.sh
+```
+
 ## Usage
 
 ```bash
