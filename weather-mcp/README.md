@@ -11,6 +11,7 @@ This project exposes a small Model Context Protocol server for place lookup and 
 - Current weather conditions
 - Next 12 hourly forecast points
 - 7-day daily forecast
+- Daily historical weather by place and date range
 - `stdio`, `http`, `sse`, and `streamable-http` transports
 
 ## Requirements
@@ -108,6 +109,25 @@ If the query is shorter than 2 characters, the tool returns:
 }
 ```
 
+### `get_historical_weather_for_place`
+
+Geocode a place query and fetch daily historical weather for a date range.
+
+Inputs:
+
+- `place_query: str`
+- `start_date: str` in `YYYY-MM-DD` format
+- `end_date: str` in `YYYY-MM-DD` format
+
+Returns:
+
+- `location`
+- `timezone`
+- `source`
+- `historical_daily`
+
+For recent historical ranges supported by Open-Meteo's Forecast API, the tool uses the forecast endpoint's recent-history range support to avoid outages on the free archive host. Older ranges use the Historical Weather archive endpoint. If you have an Open-Meteo customer API key with Historical API access, set `OPEN_METEO_API_KEY`; the server will use `customer-api.open-meteo.com` for archive requests.
+
 ## Example Response Shape
 
 ```json
@@ -184,6 +204,7 @@ src/weather_mcp/
   sampling.py       Hourly forecast sampling logic
   weather_codes.py  Weather code labels and symbols
 tests/
+  test_historical_weather.py
   test_mcp_server.py
   test_sampling.py
   test_weather_codes.py

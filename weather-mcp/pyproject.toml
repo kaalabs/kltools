@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "weather-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Stateless headless weather MCP server using Open-Meteo"
 requires-python = ">=3.13"
 dependencies = [

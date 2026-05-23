@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
 
 import httpx
@@ -12,6 +13,21 @@ from weather_mcp.sampling import sample_consecutive_hourly_indices
 
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
+CUSTOMER_ARCHIVE_URL = "https://customer-api.open-meteo.com/v1/archive"
+DAILY_HISTORY_VARIABLES = ",".join(
+    [
+        "weather_code",
+        "temperature_2m_max",
+        "temperature_2m_min",
+        "precipitation_sum",
+        "wind_speed_10m_max",
+    ]
+)
+
+
+class OpenMeteoHistoricalUnavailable(RuntimeError):
+    """Raised when Open-Meteo's free Historical API is unavailable."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +87,34 @@ class ForecastBundle:
     current: CurrentConditions | None
     twelve_hourly: list[HourlySlice]  # 12 consecutive 1-hour slices from now
     daily: list[DailySlice]
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalWeatherBundle:
+    timezone: str
+    source: str
+    daily: list[DailySlice]
+
+
+def _api_key() -> str:
+    return os.environ.get("OPEN_METEO_API_KEY", "").strip()
+
+
+def _parse_iso_date(value: str, field_name: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be in YYYY-MM-DD format") from exc
+
+
+def _is_recent_forecast_history_range(
+    start_date: date,
+    end_date: date,
+    *,
+    now: datetime | None,
+) -> bool:
+    ref = now.astimezone(UTC).date() if now else datetime.now(UTC).date()
+    return ref - timedelta(days=92) <= start_date and end_date <= ref
 
 
 def geocode(client: httpx.Client, query: str, *, count: int = 10) -> list[GeocodeHit]:
@@ -144,6 +188,46 @@ def _parse_current(block: dict[str, Any] | None) -> CurrentConditions | None:
 def _hourly_list(block: dict[str, Any], key: str) -> list[Any]:
     v = block.get(key)
     return list(v) if isinstance(v, list) else []
+
+
+def _daily_slices(block: dict[str, Any], *, limit: int | None = None) -> list[DailySlice]:
+    d_times = [str(t) for t in _hourly_list(block, "time")]
+    d_wc = [int(x) if isinstance(x, int) else None for x in _hourly_list(block, "weather_code")]
+    d_tmax = [
+        float(x) if isinstance(x, int | float) else None
+        for x in _hourly_list(block, "temperature_2m_max")
+    ]
+    d_tmin = [
+        float(x) if isinstance(x, int | float) else None
+        for x in _hourly_list(block, "temperature_2m_min")
+    ]
+    d_p = [
+        float(x) if isinstance(x, int | float) else None
+        for x in _hourly_list(block, "precipitation_sum")
+    ]
+    d_w = [
+        float(x) if isinstance(x, int | float) else None
+        for x in _hourly_list(block, "wind_speed_10m_max")
+    ]
+    d_sr = [str(x) for x in _hourly_list(block, "sunrise")]
+    d_ss = [str(x) for x in _hourly_list(block, "sunset")]
+
+    count = len(d_times) if limit is None else min(limit, len(d_times))
+    daily_out: list[DailySlice] = []
+    for i in range(count):
+        daily_out.append(
+            DailySlice(
+                date_iso=d_times[i],
+                temp_min_c=d_tmin[i] if i < len(d_tmin) else None,
+                temp_max_c=d_tmax[i] if i < len(d_tmax) else None,
+                precip_sum_mm=d_p[i] if i < len(d_p) else None,
+                wind_kmh_max=d_w[i] if i < len(d_w) else None,
+                weather_code=d_wc[i] if i < len(d_wc) else None,
+                sunrise=d_sr[i] if i < len(d_sr) else None,
+                sunset=d_ss[i] if i < len(d_ss) else None,
+            )
+        )
+    return daily_out
 
 
 def fetch_forecast(
@@ -228,45 +312,76 @@ def fetch_forecast(
 
     daily_raw = payload.get("daily")
     daily_d: dict[str, Any] = daily_raw if isinstance(daily_raw, dict) else {}
-    d_times = [str(t) for t in _hourly_list(daily_d, "time")]
-    d_wc = [int(x) if isinstance(x, int) else None for x in _hourly_list(daily_d, "weather_code")]
-    d_tmax = [
-        float(x) if isinstance(x, int | float) else None
-        for x in _hourly_list(daily_d, "temperature_2m_max")
-    ]
-    d_tmin = [
-        float(x) if isinstance(x, int | float) else None
-        for x in _hourly_list(daily_d, "temperature_2m_min")
-    ]
-    d_p = [
-        float(x) if isinstance(x, int | float) else None
-        for x in _hourly_list(daily_d, "precipitation_sum")
-    ]
-    d_w = [
-        float(x) if isinstance(x, int | float) else None
-        for x in _hourly_list(daily_d, "wind_speed_10m_max")
-    ]
-    d_sr = [str(x) for x in _hourly_list(daily_d, "sunrise")]
-    d_ss = [str(x) for x in _hourly_list(daily_d, "sunset")]
-
-    daily_out: list[DailySlice] = []
-    for i in range(min(7, len(d_times))):
-        daily_out.append(
-            DailySlice(
-                date_iso=d_times[i],
-                temp_min_c=d_tmin[i] if i < len(d_tmin) else None,
-                temp_max_c=d_tmax[i] if i < len(d_tmax) else None,
-                precip_sum_mm=d_p[i] if i < len(d_p) else None,
-                wind_kmh_max=d_w[i] if i < len(d_w) else None,
-                weather_code=d_wc[i] if i < len(d_wc) else None,
-                sunrise=d_sr[i] if i < len(d_sr) else None,
-                sunset=d_ss[i] if i < len(d_ss) else None,
-            )
-        )
-
     return ForecastBundle(
         timezone=str(payload.get("timezone") or hit.timezone),
         current=cur,
         twelve_hourly=twelve,
-        daily=daily_out,
+        daily=_daily_slices(daily_d, limit=7),
+    )
+
+
+def fetch_historical_weather(
+    client: httpx.Client,
+    hit: GeocodeHit,
+    *,
+    start_date: str,
+    end_date: str,
+    now: datetime | None = None,
+) -> HistoricalWeatherBundle:
+    start = _parse_iso_date(start_date, "start_date")
+    end = _parse_iso_date(end_date, "end_date")
+    if start > end:
+        raise ValueError("start_date must be on or before end_date")
+
+    api_key = _api_key()
+    use_forecast = not api_key and _is_recent_forecast_history_range(start, end, now=now)
+    if use_forecast:
+        url = FORECAST_URL
+        params: dict[str, str | int | float] = {
+            "latitude": hit.latitude,
+            "longitude": hit.longitude,
+            "timezone": hit.timezone,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "forecast_days": 0,
+            "daily": DAILY_HISTORY_VARIABLES,
+        }
+        source = "forecast_recent_history"
+    else:
+        url = CUSTOMER_ARCHIVE_URL if api_key else ARCHIVE_URL
+        params = {
+            "latitude": hit.latitude,
+            "longitude": hit.longitude,
+            "timezone": hit.timezone,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "daily": DAILY_HISTORY_VARIABLES,
+        }
+        if api_key:
+            params["apikey"] = api_key
+        source = "archive_history"
+
+    response = client.get(url, params=params, timeout=30.0)
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        if not api_key and not use_forecast and exc.response.status_code >= 500:
+            raise OpenMeteoHistoricalUnavailable(
+                "Open-Meteo free Historical API is unavailable. "
+                "Recent date ranges can use the Forecast API fallback; older date ranges require "
+                "OPEN_METEO_API_KEY for the customer archive endpoint or a later retry. "
+                "Status: https://status.open-meteo.com/"
+            ) from exc
+        raise
+
+    payload = cast(dict[str, Any], response.json())
+    daily_raw = payload.get("daily")
+    daily_d: dict[str, Any] = daily_raw if isinstance(daily_raw, dict) else {}
+    daily = _daily_slices(daily_d)
+    if not daily:
+        raise ValueError("Missing historical weather data from Open-Meteo")
+    return HistoricalWeatherBundle(
+        timezone=str(payload.get("timezone") or hit.timezone),
+        source=source,
+        daily=daily,
     )

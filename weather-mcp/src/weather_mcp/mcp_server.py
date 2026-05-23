@@ -19,7 +19,9 @@ from weather_mcp.open_meteo import (
     ForecastBundle,
     GeocodeHit,
     HourlySlice,
+    OpenMeteoHistoricalUnavailable,
     fetch_forecast,
+    fetch_historical_weather,
     geocode,
 )
 from weather_mcp.weather_codes import describe_code
@@ -72,6 +74,27 @@ def _forecast_payload(hit: GeocodeHit, bundle: ForecastBundle) -> dict[str, Any]
         "current": _enrich_current(cur) if cur else None,
         "hourly_next_12_hours": [_enrich_hourly(h) for h in bundle.twelve_hourly],
         "daily_7day": [_enrich_daily(d) for d in bundle.daily],
+    }
+
+
+def _historical_payload(
+    hit: GeocodeHit,
+    timezone: str,
+    source: str,
+    daily: list[DailySlice],
+) -> dict[str, Any]:
+    return {
+        "location": {
+            "label": hit.label(),
+            "latitude": hit.latitude,
+            "longitude": hit.longitude,
+            "timezone": hit.timezone,
+            "admin1": hit.admin1,
+            "country_code": hit.country_code,
+        },
+        "timezone": timezone,
+        "source": source,
+        "historical_daily": [_enrich_daily(d) for d in daily],
     }
 
 
@@ -135,6 +158,41 @@ def get_weather_for_place(place_query: str) -> dict[str, Any]:
     with httpx.Client() as client:
         bundle = fetch_forecast(client, hit)
     return _forecast_payload(hit, bundle)
+
+
+@mcp.tool
+def get_historical_weather_for_place(
+    place_query: str,
+    start_date: str,
+    end_date: str,
+) -> dict[str, Any]:
+    """Geocode a place query and return daily historical weather for a date range."""
+    q = place_query.strip()
+    if len(q) < 2:
+        return {"error": "query_too_short", "message": "Use at least 2 characters."}
+
+    try:
+        with httpx.Client() as client:
+            hits = geocode(client, q, count=1)
+        if not hits:
+            return {
+                "error": "no_match",
+                "message": f"No locations found for {place_query!r}.",
+            }
+        hit = hits[0]
+        with httpx.Client() as client:
+            bundle = fetch_historical_weather(
+                client,
+                hit,
+                start_date=start_date,
+                end_date=end_date,
+            )
+    except ValueError as exc:
+        return {"error": "invalid_date_range", "message": str(exc)}
+    except OpenMeteoHistoricalUnavailable as exc:
+        return {"error": "historical_api_unavailable", "message": str(exc)}
+
+    return _historical_payload(hit, bundle.timezone, bundle.source, bundle.daily)
 
 
 def main() -> None:

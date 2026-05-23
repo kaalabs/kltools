@@ -14,7 +14,12 @@ from weather_mcp.mcp_server import get_weather_for_place, mcp
 def test_mcp_server_exposes_only_weather_tools() -> None:
     tools = asyncio.run(mcp.list_tools())
     names = {tool.name for tool in tools}
-    assert names == {"search_cities", "get_forecast", "get_weather_for_place"}
+    assert names == {
+        "search_cities",
+        "get_forecast",
+        "get_weather_for_place",
+        "get_historical_weather_for_place",
+    }
 
 
 def test_get_weather_for_place_rejects_short_query() -> None:
@@ -30,6 +35,11 @@ def test_mcp_server_list_tools_over_http_smoke() -> None:
             async with Client(StreamableHttpTransport(url)) as client:
                 result = await client.list_tools_mcp()
         names = {tool.name for tool in result.tools}
-        assert names == {"search_cities", "get_forecast", "get_weather_for_place"}
+        assert names == {
+            "search_cities",
+            "get_forecast",
+            "get_weather_for_place",
+            "get_historical_weather_for_place",
+        }
 
     asyncio.run(exercise())
