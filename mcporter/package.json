@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build:bin": "npm run build && bun build --compile ./dist/index.js --outfile dist/mcporter",
+    "dist:build": "node scripts/build-dist.mjs",
+    "build:bin": "npm run dist:build",
     "start": "ts-node src/index.ts",
     "test": "npm run typecheck && npm run build && node --test tests/*.test.js"
   },

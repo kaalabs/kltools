@@ -4,8 +4,27 @@ CLI for MCP (Model Context Protocol) servers discovered from OpenCode and Codex 
 
 ## Installation
 
+### Turn-key install
+
+**macOS / Linux / Windows (Git Bash / MSYS2 / Cygwin)**
+
 ```bash
-# From source
+curl -fsSL https://raw.githubusercontent.com/kaalabs/kltools/main/mcporter/install.sh | sh
+```
+
+This installs the latest release binary into `~/.local/share/mcporter` and creates a launcher at `~/.local/bin/mcporter`.
+
+**Windows (PowerShell)**
+
+```powershell
+irm https://raw.githubusercontent.com/kaalabs/kltools/main/mcporter/install.ps1 | iex
+```
+
+This installs into `%LOCALAPPDATA%\mcporter` and adds `%LOCALAPPDATA%\mcporter\bin` to your user PATH.
+
+### From source
+
+```bash
 npm install
 npm run build
 npm link
@@ -91,8 +110,20 @@ Supports both `stdio` (local commands) and `sse` (remote URLs) transports.
 ```bash
 npm run build          # Compile TypeScript
 npm run build:bin      # Create standalone binary with Bun
+npm run dist:build     # Build release-ready dist folder
 node ./dist/index.js --help
 ```
+
+## Release Binaries
+
+Release assets are built by `.github/workflows/mcporter-release-binaries.yml` for tags named `mcporter-vX.Y.Z`.
+
+```bash
+git tag -a mcporter-v1.0.1 -m mcporter-v1.0.1
+git push origin mcporter-v1.0.1
+```
+
+The workflow uploads both versioned assets such as `mcporter-v1.0.1-linux-x86_64.tar.gz` and installer-facing `latest` assets such as `mcporter-latest-linux-x86_64.tar.gz`.
 
 ## License
 
