@@ -1,0 +1,33 @@
+{
+  "name": "mcporter",
+  "version": "1.0.1",
+  "description": "CLI for MCP servers discovered from OpenCode and Codex configs.",
+  "main": "dist/index.js",
+  "bin": {
+    "mcporter": "./bin/mcporter.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:bin": "npm run build && bun build --compile ./dist/index.js --outfile dist/mcporter",
+    "start": "ts-node src/index.ts",
+    "test": "npm run typecheck && npm run build && node --test tests/*.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/eventsource": "^1.1.15",
+    "chalk": "^4.1.2",
+    "commander": "^14.0.3",
+    "eventsource": "^4.1.0",
+    "toml": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}
