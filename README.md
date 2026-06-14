@@ -1,5 +1,9 @@
 # kltools
 
+> **Note:** This project has migrated from GitHub to Codeberg.
+> Canonical location: https://codeberg.org/remcokortekaas/kltools
+> The GitHub location is now archived and read-only.
+
 Mono-repo for kaaLabs tooling.
 
 Each tool is self-contained and ships with its own `README.md` covering install, usage, and development details. The repository currently includes terminal UIs, API-focused CLIs, and MCP servers.
